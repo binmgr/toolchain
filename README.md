@@ -109,34 +109,39 @@ toolchain-info
 - zlib, bzip2, xz, lz4, zstd
 
 **Cryptography & SSL:**
-- OpenSSL, libsodium
+- OpenSSL
 
 **Terminal & UI:**
 - ncurses, readline
 
 **Parsing & Data:**
-- libxml2, expat
+- libxml2, expat, json-c, yaml, protobuf
+- pcre, pcre2, oniguruma (regex)
 
 **Images:**
-- libpng, libjpeg-turbo
+- libpng, libjpeg-turbo, giflib, libwebp, tiff
 
 **Audio/Video Codecs:**
-- opus, vorbis, ogg, x264, x265, libvpx
+- opus, vorbis, ogg, lame, theora
+- x264, x265, libvpx, aom, dav1d
 
 **Fonts & Text:**
-- freetype, fontconfig
+- freetype, fontconfig, fribidi, harfbuzz
 
 **Networking:**
-- curl
+- curl, c-ares, nghttp2, libssh2
 
 **Database:**
 - SQLite
 
 **Math & System:**
-- GMP, MPFR, MPC
-- util-linux, musl-dev, linux-headers
+- GMP, MPFR, MPC, ISL
+- util-linux, musl-dev, linux-headers, elfutils, libcap
 
-All libraries include both development headers and static versions for maximum flexibility in building static binaries.
+**Scripting:**
+- Python 3, Perl (for build scripts)
+
+All libraries include both development headers and static versions where available, enabling maximum flexibility for building static binaries.
 
 ## Building the Image
 

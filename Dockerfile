@@ -49,22 +49,47 @@ RUN apk add --no-cache \
     # Image libraries
     libpng-dev libpng-static \
     libjpeg-turbo-dev libjpeg-turbo-static \
-    # Audio/Video codecs (commonly used)
+    giflib-dev \
+    libwebp-dev libwebp-static \
+    tiff-dev \
+    # Audio/Video codecs (comprehensive)
     opus-dev opus-static \
     libvorbis-dev libvorbis-static \
     libogg-dev libogg-static \
+    lame-dev lame-static \
+    libtheora-dev libtheora-static \
     x264-dev x264-static \
     x265-dev x265-static \
     libvpx-dev libvpx-static \
+    aom-dev aom-static \
+    dav1d-dev dav1d-static \
     # Font rendering
     freetype-dev freetype-static \
     fontconfig-dev fontconfig-static \
+    fribidi-dev fribidi-static \
+    harfbuzz-dev harfbuzz-static \
     # Networking
     curl-dev curl-static \
+    c-ares-dev c-ares-static \
+    nghttp2-dev nghttp2-static \
+    libssh2-dev libssh2-static \
     # Database
     sqlite-dev sqlite-static \
-    # Math libraries (needed for some builds)
-    gmp-dev mpfr-dev mpc1-dev \
+    # Data formats
+    json-c-dev \
+    yaml-dev yaml-static \
+    protobuf-dev \
+    # Regular expressions
+    pcre-dev pcre-static \
+    pcre2-dev \
+    oniguruma-dev \
+    # Math libraries
+    gmp-dev mpfr-dev mpc1-dev isl-dev \
+    # Additional system libraries
+    elfutils-dev \
+    libcap-dev libcap-static \
+    # Scripting (for build scripts)
+    python3 perl \
     # Windows cross-compiler
     mingw-w64-gcc \
     && rm -rf /var/cache/apk/*
