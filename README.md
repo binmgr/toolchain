@@ -7,10 +7,13 @@ General-purpose Docker image for building truly static binaries across multiple 
 - **Alpine Linux base** with musl libc for truly portable static binaries
 - **Zero dynamic dependencies** - binaries run anywhere
 - **Multi-platform support**:
-  - Linux AMD64 (native)
-  - Linux ARM64 (cross-compile)
-  - Windows AMD64 (cross-compile)
-  - Windows ARM64 (cross-compile)
+  - Linux AMD64 (native musl)
+  - Linux ARM64 (musl cross-compile)
+  - Windows AMD64 (MinGW cross-compile)
+  - Windows ARM64 (LLVM MinGW cross-compile)
+  - macOS AMD64 (OSXCross)
+  - macOS ARM64 (OSXCross)
+- **Multi-architecture image**: Available for linux/amd64 and linux/arm64 runners
 
 ## Available Images
 
@@ -47,24 +50,19 @@ jobs:
 strategy:
   matrix:
     include:
-      - target: linux-amd64
-        cc: gcc
-        cxx: g++
-      - target: linux-arm64
-        cc: aarch64-linux-gcc
-        cxx: aarch64-linux-g++
-      - target: windows-amd64
-        cc: x86_64-w64-mingw32-gcc
-        cxx: x86_64-w64-mingw32-g++
-      - target: windows-arm64
-        cc: aarch64-w64-mingw32-gcc
-        cxx: aarch64-w64-mingw32-g++
+      - { target: linux-amd64, cc: gcc, cxx: g++, cross_prefix: "" }
+      - { target: linux-arm64, cc: aarch64-linux-gcc, cxx: aarch64-linux-g++, cross_prefix: "aarch64-linux-" }
+      - { target: windows-amd64, cc: x86_64-w64-mingw32-gcc, cxx: x86_64-w64-mingw32-g++, cross_prefix: "x86_64-w64-mingw32-" }
+      - { target: windows-arm64, cc: aarch64-w64-mingw32-gcc, cxx: aarch64-w64-mingw32-g++, cross_prefix: "aarch64-w64-mingw32-" }
+      - { target: darwin-amd64, cc: x86_64-apple-darwin23-clang, cxx: x86_64-apple-darwin23-clang++, cross_prefix: "x86_64-apple-darwin23-" }
+      - { target: darwin-arm64, cc: aarch64-apple-darwin23-clang, cxx: aarch64-apple-darwin23-clang++, cross_prefix: "aarch64-apple-darwin23-" }
 
 steps:
   - name: Build
     run: |
       export CC=${{ matrix.cc }}
       export CXX=${{ matrix.cxx }}
+      export CROSS_PREFIX=${{ matrix.cross_prefix }}
       # Your build commands
 ```
 
@@ -88,6 +86,13 @@ export CC=aarch64-linux-gcc CXX=aarch64-linux-g++
 # Build for Windows AMD64 (cross-compile)
 export CC=x86_64-w64-mingw32-gcc CXX=x86_64-w64-mingw32-g++
 ./configure --enable-static --enable-cross-compile --host=x86_64-w64-mingw32 && make
+
+# Build for macOS ARM64 (cross-compile)
+export CC=aarch64-apple-darwin23-clang CXX=aarch64-apple-darwin23-clang++
+./configure --enable-static --enable-cross-compile --host=aarch64-apple-darwin23 && make
+
+# Show all available toolchains
+toolchain-info
 ```
 
 ## Included Tools & Libraries
@@ -110,25 +115,26 @@ export CC=x86_64-w64-mingw32-gcc CXX=x86_64-w64-mingw32-g++
 - ncurses, readline
 
 **Parsing & Data:**
-- libxml2, expat, json-c, yaml, pcre, pcre2
+- libxml2, expat
 
 **Images:**
-- libpng, libjpeg-turbo, giflib, libwebp
+- libpng, libjpeg-turbo
 
 **Audio/Video Codecs:**
-- opus, vorbis, ogg, lame, theora, x264, x265, libvpx
+- opus, vorbis, ogg, x264, x265, libvpx
 
 **Fonts & Text:**
-- freetype, fontconfig, fribidi, harfbuzz
+- freetype, fontconfig
 
 **Networking:**
-- curl, c-ares, nghttp2, libssh2
+- curl
 
 **Database:**
 - SQLite
 
-**System:**
-- util-linux, musl-dev, linux-headers, elfutils
+**Math & System:**
+- GMP, MPFR, MPC
+- util-linux, musl-dev, linux-headers
 
 All libraries include both development headers and static versions for maximum flexibility in building static binaries.
 
@@ -173,6 +179,24 @@ docker push ghcr.io/binmgr/toolchain:${COMMIT}
 - **Compiler**: LLVM MinGW
 - **Target**: aarch64-w64-mingw32
 - **Static**: Yes (statically linked)
+
+### macOS AMD64
+- **Compiler**: OSXCross (Clang)
+- **Target**: x86_64-apple-darwin23
+- **Static**: Partial (macOS has limitations on static linking)
+
+### macOS ARM64 (Apple Silicon)
+- **Compiler**: OSXCross (Clang)
+- **Target**: aarch64-apple-darwin23
+- **Static**: Partial (macOS has limitations on static linking)
+
+## Image Architecture Support
+
+The image itself is built for both:
+- `linux/amd64` - For x86_64 GitHub Actions runners
+- `linux/arm64` - For ARM64 GitHub Actions runners or local ARM machines
+
+Docker automatically pulls the correct architecture for your platform.
 
 ## Projects Using This Image
 
