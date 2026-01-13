@@ -15,9 +15,9 @@ General-purpose Docker image for building truly static binaries across multiple 
 ## Available Images
 
 ```
-ghcr.io/binmgr/cc:latest        # Latest build
-ghcr.io/binmgr/cc:2601          # January 2026 version (YYMM format)
-ghcr.io/binmgr/cc:<commit-sha>  # Specific commit
+ghcr.io/binmgr/toolchain:latest     # Latest build
+ghcr.io/binmgr/toolchain:2601       # January 2026 version (YYMM format)
+ghcr.io/binmgr/toolchain:<commit>   # Specific commit SHA
 ```
 
 ## Usage
@@ -28,15 +28,15 @@ ghcr.io/binmgr/cc:<commit-sha>  # Specific commit
 jobs:
   build:
     runs-on: ubuntu-latest
-    container: ghcr.io/binmgr/cc:latest
+    container: ghcr.io/binmgr/toolchain:latest
     steps:
       - name: Build static binary
         run: |
-          # Configure for your target
+          # Configure for your target platform
           export CC=gcc
           export CXX=g++
 
-          # Build your project
+          # Build your project (example)
           ./configure --enable-static --disable-shared
           make
 ```
@@ -72,22 +72,22 @@ steps:
 
 ```bash
 # Pull the image
-docker pull ghcr.io/binmgr/cc:latest
+docker pull ghcr.io/binmgr/toolchain:latest
 
 # Run interactively
-docker run -it -v $(pwd):/workspace ghcr.io/binmgr/cc:latest
+docker run -it -v $(pwd):/workspace ghcr.io/binmgr/toolchain:latest
 
-# Build for Linux AMD64
+# Inside container - Build for Linux AMD64 (native)
 export CC=gcc CXX=g++
 ./configure --enable-static && make
 
-# Build for Linux ARM64
+# Build for Linux ARM64 (cross-compile)
 export CC=aarch64-linux-gcc CXX=aarch64-linux-g++
-./configure --enable-static --host=aarch64-linux && make
+./configure --enable-static --enable-cross-compile --host=aarch64-linux && make
 
-# Build for Windows AMD64
+# Build for Windows AMD64 (cross-compile)
 export CC=x86_64-w64-mingw32-gcc CXX=x86_64-w64-mingw32-g++
-./configure --enable-static --host=x86_64-w64-mingw32 && make
+./configure --enable-static --enable-cross-compile --host=x86_64-w64-mingw32 && make
 ```
 
 ## Included Tools
@@ -102,16 +102,20 @@ export CC=x86_64-w64-mingw32-gcc CXX=x86_64-w64-mingw32-g++
 
 ```bash
 # Build locally
-docker build -t ghcr.io/binmgr/cc:latest .
+docker build -t ghcr.io/binmgr/toolchain:latest .
 
-# Build with version tags
-docker build -t ghcr.io/binmgr/cc:latest \
-             -t ghcr.io/binmgr/cc:2601 \
-             -t ghcr.io/binmgr/cc:$(git rev-parse --short HEAD) .
+# Build with all tags (YYMM and commit SHA)
+YYMM=$(date +%y%m)
+COMMIT=$(git rev-parse --short HEAD)
 
-# Push to registry
-docker push ghcr.io/binmgr/cc:latest
-docker push ghcr.io/binmgr/cc:2601
+docker build -t ghcr.io/binmgr/toolchain:latest \
+             -t ghcr.io/binmgr/toolchain:${YYMM} \
+             -t ghcr.io/binmgr/toolchain:${COMMIT} .
+
+# Push all tags to registry
+docker push ghcr.io/binmgr/toolchain:latest
+docker push ghcr.io/binmgr/toolchain:${YYMM}
+docker push ghcr.io/binmgr/toolchain:${COMMIT}
 ```
 
 ## Toolchain Details

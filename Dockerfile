@@ -7,7 +7,7 @@
 # - macOS (future support)
 # - BSD (future support)
 #
-# Image: ghcr.io/binmgr/cc
+# Image: ghcr.io/binmgr/toolchain
 # Tags: latest, YYMM (e.g., 2601), commit-SHA
 
 FROM alpine:latest
@@ -95,16 +95,14 @@ RUN wget -q https://github.com/mstorsjo/llvm-mingw/releases/download/20241217/ll
 # Add all cross-compilers to PATH
 ENV PATH="/opt/aarch64-linux-musl/bin:/opt/llvm-mingw/bin:${PATH}"
 
-# Create wrapper script for easy compiler selection
-RUN echo '#!/bin/sh' > /usr/local/bin/use-compiler && \
-    echo 'case "$1" in' >> /usr/local/bin/use-compiler && \
-    echo '  linux-amd64) export CC=gcc CXX=g++ CROSS_PREFIX= ;;' >> /usr/local/bin/use-compiler && \
-    echo '  linux-arm64) export CC=aarch64-linux-gcc CXX=aarch64-linux-g++ CROSS_PREFIX=aarch64-linux- ;;' >> /usr/local/bin/use-compiler && \
-    echo '  windows-amd64) export CC=x86_64-w64-mingw32-gcc CXX=x86_64-w64-mingw32-g++ CROSS_PREFIX=x86_64-w64-mingw32- ;;' >> /usr/local/bin/use-compiler && \
-    echo '  windows-arm64) export CC=aarch64-w64-mingw32-gcc CXX=aarch64-w64-mingw32-g++ CROSS_PREFIX=aarch64-w64-mingw32- ;;' >> /usr/local/bin/use-compiler && \
-    echo '  *) echo "Usage: use-compiler {linux-amd64|linux-arm64|windows-amd64|windows-arm64}"; exit 1 ;;' >> /usr/local/bin/use-compiler && \
-    echo 'esac' >> /usr/local/bin/use-compiler && \
-    chmod +x /usr/local/bin/use-compiler
+# Create compiler info script
+RUN echo '#!/bin/sh' > /usr/local/bin/toolchain-info && \
+    echo 'echo "=== Available Toolchains ==="' >> /usr/local/bin/toolchain-info && \
+    echo 'echo "Linux AMD64:   CC=gcc CXX=g++"' >> /usr/local/bin/toolchain-info && \
+    echo 'echo "Linux ARM64:   CC=aarch64-linux-gcc CXX=aarch64-linux-g++"' >> /usr/local/bin/toolchain-info && \
+    echo 'echo "Windows AMD64: CC=x86_64-w64-mingw32-gcc CXX=x86_64-w64-mingw32-g++"' >> /usr/local/bin/toolchain-info && \
+    echo 'echo "Windows ARM64: CC=aarch64-w64-mingw32-gcc CXX=aarch64-w64-mingw32-g++"' >> /usr/local/bin/toolchain-info && \
+    chmod +x /usr/local/bin/toolchain-info
 
 # Set working directory
 WORKDIR /workspace

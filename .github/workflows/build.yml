@@ -10,7 +10,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: binmgr/cc
+  IMAGE_NAME: binmgr/toolchain
 
 jobs:
   build-and-push:
