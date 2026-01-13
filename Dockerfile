@@ -60,19 +60,66 @@ RUN apk add --no-cache \
     texinfo \
     # GitHub CLI for release automation
     github-cli \
-    # Static libraries for common dependencies
-    zlib-dev \
-    zlib-static \
-    openssl-dev \
-    openssl-libs-static \
+    # System headers
     linux-headers \
-    # Additional useful libraries (static)
-    bzip2-dev \
-    bzip2-static \
-    xz-dev \
-    xz-static \
-    ncurses-dev \
-    ncurses-static
+    musl-dev
+
+# Install comprehensive libraries (dev headers + static versions)
+# This enables building virtually any C/C++ project statically
+RUN apk add --no-cache \
+    # Compression libraries
+    zlib-dev zlib-static \
+    bzip2-dev bzip2-static \
+    xz-dev xz-static \
+    lz4-dev lz4-static \
+    zstd-dev zstd-static \
+    # Crypto and SSL
+    openssl-dev openssl-libs-static \
+    libsodium-dev libsodium-static \
+    # Terminal/UI
+    ncurses-dev ncurses-static \
+    readline-dev readline-static \
+    # XML/JSON parsing
+    libxml2-dev libxml2-static \
+    expat-dev expat-static \
+    json-c-dev \
+    yaml-dev yaml-static \
+    # Image libraries
+    libpng-dev libpng-static \
+    libjpeg-turbo-dev libjpeg-turbo-static \
+    giflib-dev \
+    libwebp-dev libwebp-static \
+    # Audio/Video codec libraries
+    opus-dev opus-static \
+    libvorbis-dev libvorbis-static \
+    libogg-dev libogg-static \
+    lame-dev lame-static \
+    libtheora-dev libtheora-static \
+    x264-dev x264-static \
+    x265-dev x265-static \
+    libvpx-dev libvpx-static \
+    # Font rendering
+    freetype-dev freetype-static \
+    fontconfig-dev fontconfig-static \
+    fribidi-dev fribidi-static \
+    harfbuzz-dev harfbuzz-static \
+    # Networking
+    curl-dev curl-static \
+    c-ares-dev c-ares-static \
+    nghttp2-dev nghttp2-static \
+    libssh2-dev libssh2-static \
+    # Database
+    sqlite-dev sqlite-static \
+    # Misc utilities
+    libuuid \
+    util-linux-dev \
+    pcre-dev pcre-static \
+    pcre2-dev \
+    gmp-dev \
+    mpfr-dev \
+    mpc1-dev \
+    isl-dev \
+    elfutils-dev
 
 # Install Windows cross-compilers (MinGW)
 RUN apk add --no-cache \

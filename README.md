@@ -90,13 +90,47 @@ export CC=x86_64-w64-mingw32-gcc CXX=x86_64-w64-mingw32-g++
 ./configure --enable-static --enable-cross-compile --host=x86_64-w64-mingw32 && make
 ```
 
-## Included Tools
+## Included Tools & Libraries
 
-- **Compilers**: GCC, Clang, MinGW
+### Compilers & Build Tools
+- **Compilers**: GCC, Clang, MinGW (all with static library support)
 - **Build systems**: Make, CMake, Meson, Ninja
 - **Assemblers**: NASM, YASM
-- **Utilities**: Git, wget, curl, rsync
-- **Static libraries**: zlib, OpenSSL, bzip2, xz, ncurses
+- **Utilities**: Git, wget, curl, rsync, GitHub CLI
+
+### Standard Libraries (Headers + Static Versions)
+
+**Compression:**
+- zlib, bzip2, xz, lz4, zstd
+
+**Cryptography & SSL:**
+- OpenSSL, libsodium
+
+**Terminal & UI:**
+- ncurses, readline
+
+**Parsing & Data:**
+- libxml2, expat, json-c, yaml, pcre, pcre2
+
+**Images:**
+- libpng, libjpeg-turbo, giflib, libwebp
+
+**Audio/Video Codecs:**
+- opus, vorbis, ogg, lame, theora, x264, x265, libvpx
+
+**Fonts & Text:**
+- freetype, fontconfig, fribidi, harfbuzz
+
+**Networking:**
+- curl, c-ares, nghttp2, libssh2
+
+**Database:**
+- SQLite
+
+**System:**
+- util-linux, musl-dev, linux-headers, elfutils
+
+All libraries include both development headers and static versions for maximum flexibility in building static binaries.
 
 ## Building the Image
 
