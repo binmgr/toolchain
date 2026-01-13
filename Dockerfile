@@ -88,11 +88,14 @@ RUN apk add --no-cache \
     # Additional system libraries
     elfutils-dev \
     libcap-dev libcap-static \
-    # Scripting (for build scripts)
+    # Scripting and modern languages
     python3 perl \
+    go \
+    rust cargo \
+    nodejs npm \
     && rm -rf /var/cache/apk/*
 
-# Download and install all cross-compilers in a single layer to minimize image size
+# Download and install cross-compilers and modern toolchains in a single layer
 WORKDIR /opt
 RUN set -ex && \
     # ARM64 Linux cross-compiler (Bootlin musl toolchain)
@@ -111,8 +114,12 @@ RUN set -ex && \
     # Clean up OSXCross build artifacts
     rm -rf build tarballs *.sh *.md && \
     cd .. && \
+    # Zig (excellent for cross-compilation, can replace C/C++ compiler)
+    wget -q https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz && \
+    tar xJf zig-linux-x86_64-0.13.0.tar.xz && \
+    ln -s zig-linux-x86_64-0.13.0 zig && \
     # Clean up all downloads and unnecessary files
-    rm -f *.tar.* && \
+    rm -f *.tar.* *.tar.bz2 *.tar.xz && \
     # Strip documentation to save space (~200MB savings)
     rm -rf */share/doc */share/man */share/info */share/gtk-doc 2>/dev/null || true && \
     # Remove locale files (not needed for builds, ~50MB savings)
@@ -122,35 +129,50 @@ RUN set -ex && \
     # Remove test files and examples (~100MB savings)
     find . -type d -name "test" -o -name "tests" -o -name "examples" | xargs rm -rf 2>/dev/null || true
 
-# Add all cross-compilers to PATH
-ENV PATH="/opt/aarch64-linux-musl/bin:/opt/llvm-mingw/bin:/opt/osxcross/target/bin:${PATH}"
+# Add all cross-compilers and modern toolchains to PATH
+ENV PATH="/opt/aarch64-linux-musl/bin:/opt/llvm-mingw/bin:/opt/osxcross/target/bin:/opt/zig:${PATH}"
 
-# Create compiler info script
+# Create toolchain info script
 RUN printf '#!/bin/sh\n\
-echo "=== Available Toolchains ==="\n\
+echo "=== C/C++ Cross-Compilers ==="\n\
 echo "Linux AMD64:   CC=gcc CXX=g++"\n\
 echo "Linux ARM64:   CC=aarch64-linux-gcc CXX=aarch64-linux-g++"\n\
-echo "Windows AMD64: CC=x86_64-w64-mingw32-gcc CXX=x86_64-w64-mingw32-g++"\n\
-echo "Windows ARM64: CC=aarch64-w64-mingw32-gcc CXX=aarch64-w64-mingw32-g++"\n\
+echo "Windows AMD64: CC=x86_64-w64-mingw32-clang CXX=x86_64-w64-mingw32-clang++"\n\
+echo "Windows ARM64: CC=aarch64-w64-mingw32-clang CXX=aarch64-w64-mingw32-clang++"\n\
 echo "macOS AMD64:   CC=x86_64-apple-darwin23-clang CXX=x86_64-apple-darwin23-clang++"\n\
 echo "macOS ARM64:   CC=aarch64-apple-darwin23-clang CXX=aarch64-apple-darwin23-clang++"\n\
+echo ""\n\
+echo "=== Modern Languages ==="\n\
+echo "Rust:   rustc $(rustc --version 2>/dev/null | cut -d\" \" -f2)"\n\
+echo "Go:     go $(go version 2>/dev/null | cut -d\" \" -f3)"\n\
+echo "Zig:    zig $(zig version 2>/dev/null)"\n\
+echo "Node:   node $(node --version 2>/dev/null)"\n\
+echo "Python: python $(python3 --version 2>/dev/null | cut -d\" \" -f2)"\n\
 ' > /usr/local/bin/toolchain-info && \
     chmod +x /usr/local/bin/toolchain-info
 
 # Set working directory
 WORKDIR /workspace
 
-# Verify toolchains are available and print versions
+# Verify all toolchains and languages are available
 RUN echo "=== Toolchain Verification ===" && \
     echo "Alpine: $(cat /etc/alpine-release)" && \
     echo "Architecture: $(uname -m)" && \
     echo "" && \
-    echo "Linux AMD64:   $(gcc --version | head -1)" && \
-    echo "Linux ARM64:   $(aarch64-linux-gcc --version | head -1)" && \
-    echo "Windows AMD64: $(x86_64-w64-mingw32-gcc --version | head -1)" && \
-    echo "Windows ARM64: $(aarch64-w64-mingw32-gcc --version | head -1)" && \
-    echo "macOS AMD64:   $(x86_64-apple-darwin23-clang --version 2>&1 | head -1)" && \
-    echo "macOS ARM64:   $(aarch64-apple-darwin23-clang --version 2>&1 | head -1)" && \
+    echo "=== C/C++ Compilers ===" && \
+    echo "GCC (Linux AMD64):      $(gcc --version | head -1)" && \
+    echo "GCC (Linux ARM64):      $(aarch64-linux-gcc --version | head -1)" && \
+    echo "Clang (Windows AMD64):  $(x86_64-w64-mingw32-clang --version | head -1)" && \
+    echo "Clang (Windows ARM64):  $(aarch64-w64-mingw32-clang --version | head -1)" && \
+    echo "Clang (macOS AMD64):    $(x86_64-apple-darwin23-clang --version 2>&1 | head -1)" && \
+    echo "Clang (macOS ARM64):    $(aarch64-apple-darwin23-clang --version 2>&1 | head -1)" && \
+    echo "" && \
+    echo "=== Modern Languages ===" && \
+    echo "Rust:   $(rustc --version)" && \
+    echo "Go:     $(go version)" && \
+    echo "Zig:    $(zig version)" && \
+    echo "Node:   $(node --version)" && \
+    echo "Python: $(python3 --version)" && \
     echo "" && \
     echo "=== All toolchains ready ==="
 

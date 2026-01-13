@@ -95,13 +95,21 @@ export CC=aarch64-apple-darwin23-clang CXX=aarch64-apple-darwin23-clang++
 toolchain-info
 ```
 
-## Included Tools & Libraries
+## Included Tools & Languages
 
-### Compilers & Build Tools
-- **Compilers**: GCC, Clang, MinGW (all with static library support)
+### C/C++ Compilers & Build Tools
+- **Compilers**: GCC, Clang, LLVM, MinGW (all with static library support)
 - **Build systems**: Make, CMake, Meson, Ninja
 - **Assemblers**: NASM, YASM
 - **Utilities**: Git, wget, curl, rsync, GitHub CLI
+
+### Modern Languages (Latest Stable)
+- **Rust**: Latest stable from Alpine repos + Cargo
+- **Go**: Latest stable with built-in cross-compilation
+- **Zig**: v0.13.0 (excellent C/C++ compiler alternative + cross-compilation)
+- **Node.js**: Latest LTS + npm (for build scripts and tooling)
+- **Python**: Python 3 (for build scripts)
+- **Perl**: For legacy build scripts
 
 ### Standard Libraries (Headers + Static Versions)
 
@@ -207,9 +215,38 @@ The image is built for **linux/amd64** (x86_64) and runs on standard GitHub Acti
 - macOS AMD64 (cross-compile)
 - macOS ARM64 (cross-compile)
 
+## Use Cases
+
+This image enables building static binaries for:
+
+**C/C++ Projects:**
+- Media tools: FFmpeg, ImageMagick, GraphicsMagick
+- Network utilities: curl, wget, aria2
+- Compression tools: 7zip, xz, zstd
+- System utilities: htop, tmux, rsync
+- Games and game engines
+
+**Rust Projects:**
+- CLI tools: ripgrep, fd, bat, exa
+- System utilities: tokei, hyperfine
+- Network tools: bandwhich, dog
+
+**Go Projects:**
+- CLI tools: hugo, caddy, minio
+- DevOps tools: docker, kubectl, terraform
+- Network tools: cloudflared, frp
+
+**Zig Projects:**
+- System utilities and libraries
+- Can also compile C/C++ projects with better cross-compilation
+
+**Node.js Projects:**
+- Build and bundle standalone executables with pkg or nexe
+- Run build scripts and tooling
+
 ## Projects Using This Image
 
-- [binmgr/ffmpeg](https://github.com/binmgr/ffmpeg) - Static FFmpeg binaries
+- [binmgr/ffmpeg](https://github.com/binmgr/ffmpeg) - Static FFmpeg binaries for all platforms
 
 ## Contributing
 
