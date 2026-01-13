@@ -108,6 +108,8 @@ RUN apk add --no-cache \
     go \
     rust cargo \
     nodejs npm \
+    # Glibc compatibility (needed for some pre-built toolchains)
+    gcompat \
     && rm -rf /var/cache/apk/*
 
 # Download and install cross-compilers and modern toolchains in a single layer
@@ -117,6 +119,13 @@ RUN set -ex && \
     wget -q https://toolchains.bootlin.com/downloads/releases/toolchains/aarch64/tarballs/aarch64--musl--stable-2024.02-1.tar.bz2 && \
     tar xjf aarch64--musl--stable-2024.02-1.tar.bz2 && \
     mv aarch64--musl--stable-2024.02-1 aarch64-linux-musl && \
+    # Create standard symlinks for Bootlin toolchain
+    cd aarch64-linux-musl/bin && \
+    ln -sf aarch64-buildroot-linux-musl-gcc aarch64-linux-gcc && \
+    ln -sf aarch64-buildroot-linux-musl-g++ aarch64-linux-g++ && \
+    ln -sf aarch64-buildroot-linux-musl-ar aarch64-linux-ar && \
+    ln -sf aarch64-buildroot-linux-musl-strip aarch64-linux-strip && \
+    cd ../.. && \
     # Windows cross-compiler (LLVM MinGW - supports both AMD64 and ARM64)
     wget -q https://github.com/mstorsjo/llvm-mingw/releases/download/20241217/llvm-mingw-20241217-ucrt-ubuntu-20.04-x86_64.tar.xz && \
     tar xJf llvm-mingw-20241217-ucrt-ubuntu-20.04-x86_64.tar.xz && \
