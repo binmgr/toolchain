@@ -195,13 +195,17 @@ docker push ghcr.io/binmgr/toolchain:${COMMIT}
 - **Target**: aarch64-apple-darwin23
 - **Static**: Partial (macOS has limitations on static linking)
 
-## Image Architecture Support
+## Image Architecture
 
-The image itself is built for both:
-- `linux/amd64` - For x86_64 GitHub Actions runners
-- `linux/arm64` - For ARM64 GitHub Actions runners or local ARM machines
+The image is built for **linux/amd64** (x86_64) and runs on standard GitHub Actions runners and most development machines.
 
-Docker automatically pulls the correct architecture for your platform.
+**Important**: The image architecture (amd64) is different from build targets. This amd64 image can cross-compile binaries FOR:
+- Linux AMD64 (native)
+- Linux ARM64 (cross-compile)
+- Windows AMD64 (cross-compile)
+- Windows ARM64 (cross-compile)
+- macOS AMD64 (cross-compile)
+- macOS ARM64 (cross-compile)
 
 ## Projects Using This Image
 

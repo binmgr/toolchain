@@ -90,9 +90,10 @@ RUN apk add --no-cache \
     libcap-dev libcap-static \
     # Scripting (for build scripts)
     python3 perl \
-    # Windows cross-compiler
-    mingw-w64-gcc \
     && rm -rf /var/cache/apk/*
+
+# Install Windows cross-compiler (separate to handle potential architecture differences)
+RUN apk add --no-cache mingw-w64 && rm -rf /var/cache/apk/*
 
 # Download and install all cross-compilers in a single layer to minimize image size
 WORKDIR /opt
