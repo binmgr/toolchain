@@ -92,9 +92,6 @@ RUN apk add --no-cache \
     python3 perl \
     && rm -rf /var/cache/apk/*
 
-# Install Windows cross-compiler (separate to handle potential architecture differences)
-RUN apk add --no-cache mingw-w64 && rm -rf /var/cache/apk/*
-
 # Download and install all cross-compilers in a single layer to minimize image size
 WORKDIR /opt
 RUN set -ex && \
@@ -102,7 +99,7 @@ RUN set -ex && \
     wget -q https://toolchains.bootlin.com/downloads/releases/toolchains/aarch64/tarballs/aarch64--musl--stable-2024.02-1.tar.bz2 && \
     tar xjf aarch64--musl--stable-2024.02-1.tar.bz2 && \
     mv aarch64--musl--stable-2024.02-1 aarch64-linux-musl && \
-    # Windows ARM64 cross-compiler (LLVM MinGW)
+    # Windows cross-compiler (LLVM MinGW - supports both AMD64 and ARM64)
     wget -q https://github.com/mstorsjo/llvm-mingw/releases/download/20241217/llvm-mingw-20241217-ucrt-ubuntu-20.04-x86_64.tar.xz && \
     tar xJf llvm-mingw-20241217-ucrt-ubuntu-20.04-x86_64.tar.xz && \
     ln -s llvm-mingw-20241217-ucrt-ubuntu-20.04-x86_64 llvm-mingw && \
@@ -116,12 +113,14 @@ RUN set -ex && \
     cd .. && \
     # Clean up all downloads and unnecessary files
     rm -f *.tar.* && \
-    # Strip documentation to save space
+    # Strip documentation to save space (~200MB savings)
     rm -rf */share/doc */share/man */share/info */share/gtk-doc 2>/dev/null || true && \
-    # Remove locale files (not needed for builds)
+    # Remove locale files (not needed for builds, ~50MB savings)
     rm -rf */share/locale 2>/dev/null || true && \
     # Clean up build artifacts
-    find . -type f -name "*.o" -delete 2>/dev/null || true
+    find . -type f -name "*.o" -delete 2>/dev/null || true && \
+    # Remove test files and examples (~100MB savings)
+    find . -type d -name "test" -o -name "tests" -o -name "examples" | xargs rm -rf 2>/dev/null || true
 
 # Add all cross-compilers to PATH
 ENV PATH="/opt/aarch64-linux-musl/bin:/opt/llvm-mingw/bin:/opt/osxcross/target/bin:${PATH}"
