@@ -244,9 +244,7 @@ This image enables building static binaries for:
 - Build and bundle standalone executables with pkg or nexe
 - Run build scripts and tooling
 
-## Projects Using This Image
-
-- [binmgr/ffmpeg](https://github.com/binmgr/ffmpeg) - Static FFmpeg binaries for all platforms
+All projects under the binmgr organization use this toolchain for consistent, reproducible static binary builds.
 
 ## Contributing
 

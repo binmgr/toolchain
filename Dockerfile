@@ -12,10 +12,25 @@
 
 FROM alpine:latest
 
-LABEL org.opencontainers.image.source="https://github.com/binmgr/toolchain"
-LABEL org.opencontainers.image.description="Alpine-based toolchain for building truly static binaries"
-LABEL org.opencontainers.image.licenses="MIT"
+# OCI Image annotations
+LABEL org.opencontainers.image.title="binmgr/toolchain"
+LABEL org.opencontainers.image.description="Ultimate cross-compilation toolchain for static binaries across all platforms"
 LABEL org.opencontainers.image.authors="binmgr"
+LABEL org.opencontainers.image.vendor="binmgr"
+LABEL org.opencontainers.image.licenses="MIT"
+LABEL org.opencontainers.image.url="https://github.com/binmgr/toolchain"
+LABEL org.opencontainers.image.source="https://github.com/binmgr/toolchain"
+LABEL org.opencontainers.image.documentation="https://github.com/binmgr/toolchain/blob/main/README.md"
+LABEL org.opencontainers.image.base.name="alpine:latest"
+
+# Custom labels for toolchain capabilities
+LABEL binmgr.toolchain.version="2601"
+LABEL binmgr.toolchain.languages="c,c++,rust,go,zig,nodejs,python,perl"
+LABEL binmgr.toolchain.targets="linux-amd64,linux-arm64,windows-amd64,windows-arm64,darwin-amd64,darwin-arm64"
+LABEL binmgr.toolchain.libc="musl"
+LABEL binmgr.toolchain.static="true"
+LABEL binmgr.toolchain.compilers="gcc,clang,rustc,go,zig"
+LABEL binmgr.toolchain.build-systems="make,cmake,meson,ninja,cargo,go-build"
 
 # Install build tools, libraries, and cross-compilers in a single layer to reduce image size
 RUN apk add --no-cache \
