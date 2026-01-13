@@ -52,17 +52,17 @@ RUN apk add --no-cache \
     giflib-dev \
     libwebp-dev libwebp-static \
     tiff-dev \
-    # Audio/Video codecs (comprehensive)
-    opus-dev opus-static \
-    libvorbis-dev libvorbis-static \
-    libogg-dev libogg-static \
-    lame-dev lame-static \
-    libtheora-dev libtheora-static \
-    x264-dev x264-static \
-    x265-dev x265-static \
-    libvpx-dev libvpx-static \
-    aom-dev aom-static \
-    dav1d-dev dav1d-static \
+    # Audio/Video codecs (dev packages - FFmpeg will build statically)
+    opus-dev \
+    libvorbis-dev \
+    libogg-dev \
+    lame-dev \
+    libtheora-dev \
+    x264-dev \
+    x265-dev \
+    libvpx-dev \
+    aom-dev \
+    dav1d-dev \
     # Font rendering
     freetype-dev freetype-static \
     fontconfig-dev fontconfig-static \
@@ -70,7 +70,7 @@ RUN apk add --no-cache \
     harfbuzz-dev harfbuzz-static \
     # Networking
     curl-dev curl-static \
-    c-ares-dev c-ares-static \
+    c-ares-dev \
     nghttp2-dev nghttp2-static \
     libssh2-dev libssh2-static \
     # Database
