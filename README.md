@@ -6,7 +6,45 @@
 
 **The ultimate cross-compilation toolchain for building truly static binaries across all major platforms.**
 
-A comprehensive Docker-based development environment that enables you to build portable, zero-dependency static binaries for 16+ platforms from a single unified toolchain. Perfect for CLI tools, system utilities, embedded systems, and distributing software that "just works" everywhere.
+A comprehensive Docker-based development environment that enables you to build portable, zero-dependency static binaries for **20+ platforms** from a single unified toolchain. Perfect for CLI tools, system utilities, embedded systems, and distributing software that "just works" everywhere.
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         binmgr/toolchain                                    │
+│                     Alpine Linux + musl libc                                │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐           │
+│  │   Native    │ │    Cross    │ │   Modern    │ │    WASM     │           │
+│  │  Compilers  │ │  Compilers  │ │  Languages  │ │  Toolchain  │           │
+│  ├─────────────┤ ├─────────────┤ ├─────────────┤ ├─────────────┤           │
+│  │ GCC         │ │ Bootlin ARM │ │ Rust+Cargo  │ │ Emscripten  │           │
+│  │ Clang/LLVM  │ │ LLVM MinGW  │ │ Go, Dart    │ │ WASI SDK    │           │
+│  │ mold linker │ │ OSXCross    │ │ Zig         │ │ wasmtime    │           │
+│  │             │ │ Android NDK │ │ TinyGo      │ │ wasm-pack   │           │
+│  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘           │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐           │
+│  │    Build    │ │   Runtime   │ │   60+ Libs  │ │  Universal  │           │
+│  │   Systems   │ │   & Tools   │ │   (static)  │ │   Binary    │           │
+│  ├─────────────┤ ├─────────────┤ ├─────────────┤ ├─────────────┤           │
+│  │ Make/CMake  │ │ Node.js     │ │ zlib, ssl   │ │ Cosmopolitan│           │
+│  │ Meson/Ninja │ │ Deno/Bun    │ │ curl, png   │ │ (cosmocc)   │           │
+│  │ Gradle/Maven│ │ QEMU        │ │ ffmpeg libs │ │             │           │
+│  │ Cargo       │ │ Java 17     │ │             │ │             │           │
+│  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘           │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                              OUTPUT TARGETS                                  │
+│  ┌─────────┐┌─────────┐┌─────────┐┌─────────┐┌─────────┐┌─────────┐        │
+│  │ Linux   ││ Windows ││ macOS   ││ BSD     ││ Android ││ WASM    │        │
+│  │ AMD64   ││ AMD64   ││ AMD64   ││ FreeBSD ││ ARM64   ││ wasm32  │        │
+│  │ ARM64   ││ ARM64   ││ ARM64   ││ OpenBSD ││ ARMv7   ││ wasi    │        │
+│  │ ARMv7   ││         ││         ││ NetBSD  ││ x86_64  ││         │        │
+│  │ RISC-V  ││         ││         ││ illumos ││ x86     ││         │        │
+│  └─────────┘└─────────┘└─────────┘└─────────┘└─────────┘└─────────┘        │
+│                              + cosmo (universal fat binary)                 │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
@@ -14,6 +52,7 @@ A comprehensive Docker-based development environment that enables you to build p
 
 - [Features](#-features)
 - [Quick Start](#-quick-start)
+- [Project Auto-Detection](#-project-auto-detection)
 - [Available Targets](#-available-targets)
 - [Usage](#-usage)
   - [Building for Specific Targets](#building-for-specific-targets)
@@ -35,18 +74,22 @@ A comprehensive Docker-based development environment that enables you to build p
 
 - **Alpine Linux base** with musl libc for truly portable static binaries
 - **Zero dynamic dependencies** - binaries run anywhere
+- **23 compilation targets** across 8 OS families
 - **Multi-platform support**:
-  - Linux AMD64 (native musl)
-  - Linux ARM64 (musl cross-compile)
-  - Windows AMD64 (MinGW cross-compile)
-  - Windows ARM64 (LLVM MinGW cross-compile)
-  - macOS AMD64 (OSXCross)
-  - macOS ARM64 (OSXCross)
-  - FreeBSD AMD64, ARM64 (Clang cross-compile)
-  - OpenBSD AMD64, ARM64 (Clang cross-compile)
-  - NetBSD AMD64, ARM64 (Clang cross-compile)
+  - Linux AMD64, ARM64, ARMv7, RISC-V64 (native musl)
+  - Windows AMD64, ARM64 (LLVM MinGW cross-compile)
+  - macOS AMD64, ARM64 (OSXCross)
+  - FreeBSD, OpenBSD, NetBSD (AMD64, ARM64)
+  - illumos/Solaris AMD64
   - Android ARM64, ARMv7, x86_64, x86 (NDK r27c, API 24+)
+  - WebAssembly (wasm32, wasm64, wasi)
+  - **Cosmopolitan** universal binaries (runs everywhere!)
+- **Fast build tools**:
+  - **mold** - blazingly fast linker (10x+ faster than ld)
+  - **ccache** - compiler cache for faster rebuilds
+  - **sccache** - distributed compilation cache
 - **Multi-architecture image**: Available for linux/amd64 and linux/arm64 runners
+- **VS Code devcontainer** support for one-click development
 
 ## 📦 Available Images
 
@@ -58,18 +101,30 @@ ghcr.io/binmgr/toolchain:<commit>   # Specific commit SHA
 
 ## 🎯 Available Targets
 
-The toolchain supports **16 compilation targets** across 6 operating system families:
+The toolchain supports **23 compilation targets** across 8 operating system families:
 
 | OS Family | Architectures | Compiler | Static Support |
 |-----------|--------------|----------|----------------|
-| **Linux** | AMD64, ARM64 | GCC (musl) | ✅ Full |
+| **Linux** | AMD64, ARM64, ARMv7, RISC-V64 | GCC (musl) | ✅ Full |
 | **Windows** | AMD64, ARM64 | LLVM MinGW | ✅ Full |
 | **macOS** | AMD64, ARM64 | OSXCross (Clang) | ⚠️ Partial |
 | **FreeBSD** | AMD64, ARM64 | Clang | ✅ Full |
 | **OpenBSD** | AMD64, ARM64 | Clang | ✅ Full |
 | **NetBSD** | AMD64, ARM64 | Clang | ✅ Full |
+| **illumos** | AMD64 | Clang | ✅ Full |
 | **Android** | ARM64, ARMv7, x86_64, x86 | NDK r27c | ⚠️ Partial |
-| **WebAssembly** | wasm32, wasm64 | Emscripten | ✅ Full |
+| **WebAssembly** | wasm32, wasm64, wasi | Emscripten/WASI SDK | ✅ Full |
+| **Universal** | cosmo | Cosmopolitan | ✅ Full |
+
+### Universal Binaries with Cosmopolitan
+
+Build truly universal "fat" binaries that run on Linux, macOS, Windows, and BSD from a single executable:
+
+```bash
+docker run --rm -v $(pwd):/workspace -e TARGET=cosmo \
+  ghcr.io/binmgr/toolchain:latest cosmocc main.c -o myapp.com
+# myapp.com now runs on Linux, macOS, Windows, FreeBSD, OpenBSD, NetBSD!
+```
 
 Run `docker run --rm ghcr.io/binmgr/toolchain:latest --list-targets` for detailed target information.
 
@@ -97,6 +152,96 @@ docker run --rm -it -v $(pwd):/workspace \
 
 # Show all available options
 docker run --rm ghcr.io/binmgr/toolchain:latest --help
+
+# Auto-detect project type and show build suggestions
+docker run --rm -v $(pwd):/workspace \
+  ghcr.io/binmgr/toolchain:latest --detect
+
+# Auto-detect and build the project
+docker run --rm -v $(pwd):/workspace \
+  ghcr.io/binmgr/toolchain:latest --auto-build
+```
+
+---
+
+## 🔍 Project Auto-Detection
+
+The toolchain can automatically detect your project type from configuration files and suggest (or run) the appropriate build commands.
+
+### Detect Project Type
+
+```bash
+# Auto-detect project type
+docker run --rm -v $(pwd):/workspace \
+  ghcr.io/binmgr/toolchain:latest --detect
+
+# Output:
+# Auto-detecting project type in: .
+# ok Detected: Rust project (Cargo)
+#
+# Project configuration:
+#   Type:         rust
+#   Build system: cargo
+#   Language:     rust
+#
+# Suggested build commands:
+#   cargo build --release       # Build release
+#   cargo build --target <T>    # Cross-compile
+#   cargo test                  # Run tests
+```
+
+### Auto-Build
+
+```bash
+# Auto-detect and build in one command
+docker run --rm -v $(pwd):/workspace \
+  ghcr.io/binmgr/toolchain:latest --auto-build
+
+# With cross-compilation target
+docker run --rm -v $(pwd):/workspace \
+  -e TARGET=linux-arm64 \
+  ghcr.io/binmgr/toolchain:latest --auto-build
+```
+
+### Supported Project Types
+
+| Project Type | Detection File(s) | Build System | Auto-Build |
+|--------------|------------------|--------------|------------|
+| **Rust** | `Cargo.toml` | Cargo | `cargo build --release` |
+| **Go** | `go.mod` | Go | `go build` |
+| **Dart** | `pubspec.yaml` | Dart | `dart compile exe` |
+| **Zig** | `build.zig` | Zig | `zig build` |
+| **C/C++ (CMake)** | `CMakeLists.txt` | CMake | `cmake --build` |
+| **C/C++ (Meson)** | `meson.build` | Meson | `ninja -C build` |
+| **C/C++ (Autotools)** | `configure` | Autotools | `./configure && make` |
+| **C/C++ (Autotools)** | `configure.ac` | Autotools | `autoreconf -fi && ./configure && make` |
+| **C/C++ (Make)** | `Makefile` | Make | `make` |
+| **Android** | `build.gradle` + `app/` dir | Gradle | `./gradlew assembleRelease` |
+| **Kotlin/Java** | `build.gradle`, `build.gradle.kts` | Gradle | `./gradlew build` |
+| **Java (Maven)** | `pom.xml` | Maven | `mvn package` |
+| **WASM (Rust)** | `Cargo.toml` + wasm target | wasm-pack | `wasm-pack build` |
+| **WASM (C/C++)** | Makefile with emcc | Emscripten | `emmake make` |
+
+> **Note:** Interpreted languages (Node.js, Python, Deno, Bun) are available in the toolchain for build scripts but are not supported by auto-detection. For interpreted language projects, see `devenvmgr/interpreters`.
+
+### Example: Android Project
+
+```bash
+# Your Android project structure:
+# my-android-app/
+# ├── build.gradle.kts
+# ├── settings.gradle.kts
+# ├── app/
+# │   ├── build.gradle.kts
+# │   └── src/
+
+# Auto-build Android APK
+docker run --rm -v $(pwd):/workspace \
+  ghcr.io/binmgr/toolchain:latest --auto-build
+
+# Manually build with Gradle
+docker run --rm -v $(pwd):/workspace \
+  ghcr.io/binmgr/toolchain:latest ./gradlew assembleRelease
 ```
 
 ---
@@ -307,17 +452,49 @@ docker run --rm -v $(pwd):/workspace \
 
 ## Included Tools & Languages
 
+### Supported Languages Overview
+
+| Language | Compiler/Runtime | Cross-Compile | WebAssembly | Notes |
+|----------|-----------------|---------------|-------------|-------|
+| **C** | GCC, Clang, Zig, cosmocc | ✅ All targets | ✅ emcc, wasi | Full static support |
+| **C++** | G++, Clang++, Zig, cosmoc++ | ✅ All targets | ✅ em++, wasi | Full static support |
+| **Rust** | rustc + Cargo | ✅ All targets | ✅ wasm-pack | Use `--target` flag |
+| **Go** | go build | ✅ Built-in | ✅ GOOS=js | Set GOOS/GOARCH |
+| **Dart** | dart compile exe | ✅ Linux | ❌ | Produces native executables |
+| **Zig** | zig build | ✅ Built-in | ✅ wasm32-wasi | Excellent cross-compiler |
+| **TinyGo** | tinygo | ✅ Embedded | ✅ wasm | For small binaries |
+| **Kotlin** | kotlinc 2.1.0 | ✅ Android/JVM | N/A | Android APKs, JARs |
+| **Java** | OpenJDK 17 | ✅ Android/JVM | N/A | Android APKs, JARs |
+
+**Tooling languages** (for build scripts, not binary output):
+
+| Language | Runtime | Purpose |
+|----------|---------|---------|
+| **JavaScript** | Node.js, Deno, Bun | Build scripts, npm tools |
+| **TypeScript** | Deno, Bun, tsc | Build scripts |
+| **Python** | python3 | Configure scripts, build tools |
+| **Perl** | perl | Legacy build scripts |
+
 ### C/C++ Compilers & Build Tools
-- **Compilers**: GCC, Clang, LLVM, MinGW (all with static library support)
-- **Build systems**: Make, CMake, Meson, Ninja
+- **Compilers**: GCC, Clang, LLVM, MinGW, Zig, cosmocc (all with static library support)
+- **Linkers**: ld, lld, mold (fast!)
+- **Build systems**: Make, CMake, Meson, Ninja, Gradle, Maven
 - **Assemblers**: NASM, YASM
 - **Utilities**: Git, wget, curl, rsync, GitHub CLI
+
+### JVM/Android Build Tools
+- **Java**: OpenJDK 17 (for Gradle, Kotlin, Android builds)
+- **Kotlin**: kotlinc 2.1.0 (Kotlin compiler)
+- **Gradle**: 8.12 (build automation for JVM/Android)
+- **Maven**: Latest Alpine package (Java build tool)
+- **Android SDK**: Command-line tools, build-tools 35.0.0, platform 35
 
 ### Modern Languages (Latest Stable)
 - **Rust**: Latest stable from Alpine repos + Cargo + wasm-pack
 - **Go**: Latest stable with built-in cross-compilation
 - **TinyGo**: v0.34.0 (Go for embedded and WebAssembly)
 - **Zig**: v0.13.0 (excellent C/C++ compiler alternative + cross-compilation)
+- **Dart**: v3.5.4 (compiles to native executables via `dart compile exe`)
 - **Node.js**: Latest LTS + npm (for build scripts and tooling)
 - **Deno**: Latest stable (modern JavaScript/TypeScript runtime)
 - **Bun**: Latest stable (fast JavaScript runtime and bundler)
@@ -326,8 +503,35 @@ docker run --rm -v $(pwd):/workspace \
 
 ### WebAssembly Toolchain
 - **Emscripten**: C/C++ to WebAssembly compiler (emcc, em++)
+- **WASI SDK**: WebAssembly System Interface compiler
 - **wasm-pack**: Build Rust for WebAssembly
 - **wasmtime**: Fast WebAssembly runtime
+
+### Build Script Templates
+
+Pre-built scripts for common languages in `scripts/`:
+
+```bash
+# Rust cross-compilation
+./scripts/build-rust.sh linux-arm64 myapp
+
+# Go cross-compilation
+./scripts/build-go.sh windows-amd64 myapp
+
+# CMake cross-compilation
+./scripts/build-cmake.sh darwin-arm64 . build
+
+# Zig cross-compilation
+./scripts/build-zig.sh linux-riscv64 main.zig myapp
+
+# Cosmopolitan universal binary
+./scripts/build-cosmo.sh main.c myapp
+
+# Build for all targets
+./scripts/build-all-targets.sh "make"
+```
+
+Output naming follows: `{name}-{platform}-{arch}` (e.g., `myapp-linux-arm64`)
 
 ### Standard Libraries (Headers + Static Versions)
 
@@ -536,6 +740,12 @@ This image enables building static binaries for:
 - System utilities and libraries
 - Can also compile C/C++ projects with better cross-compilation
 
+**Dart Projects:**
+- CLI tools: dcli, args-based utilities
+- Server-side applications: shelf, dart_frog
+- Developer tools and automation scripts
+- AOT compiled to native executables
+
 **Node.js/Deno/Bun Projects:**
 - Build and bundle standalone executables
 - Run build scripts and tooling
@@ -668,7 +878,7 @@ docker run --rm -v $(pwd):/workspace \
   wasm-pack build --target web --release
 ```
 
-### Example 5: Android NDK Build
+### Example 5: Android NDK Build (Native C/C++)
 
 ```bash
 # Build native library for Android
@@ -682,6 +892,89 @@ docker run --rm -v $(pwd):/workspace \
         -B build-$arch .
       cmake --build build-$arch -- -j$(nproc)
     done
+  '
+```
+
+### Example 6: Android App Build (Gradle/Kotlin)
+
+```bash
+# Build Android APK with auto-detection
+docker run --rm -v $(pwd):/workspace \
+  ghcr.io/binmgr/toolchain:latest --auto-build
+
+# Build debug APK
+docker run --rm -v $(pwd):/workspace \
+  ghcr.io/binmgr/toolchain:latest \
+  ./gradlew assembleDebug
+
+# Build release APK
+docker run --rm -v $(pwd):/workspace \
+  ghcr.io/binmgr/toolchain:latest \
+  ./gradlew assembleRelease
+
+# Build with specific Gradle memory settings
+docker run --rm -v $(pwd):/workspace \
+  -e GRADLE_OPTS="-Xmx4g -XX:+HeapDumpOnOutOfMemoryError" \
+  ghcr.io/binmgr/toolchain:latest \
+  ./gradlew build
+```
+
+### Example 7: Kotlin/JVM Project
+
+```bash
+# Build Kotlin JVM project with Gradle
+docker run --rm -v $(pwd):/workspace \
+  ghcr.io/binmgr/toolchain:latest \
+  bash -c '
+    ./gradlew build
+    ./gradlew jar
+  '
+
+# Build with Maven
+docker run --rm -v $(pwd):/workspace \
+  ghcr.io/binmgr/toolchain:latest \
+  mvn package -DskipTests
+
+# Compile standalone Kotlin file
+docker run --rm -v $(pwd):/workspace \
+  ghcr.io/binmgr/toolchain:latest \
+  kotlinc main.kt -include-runtime -d app.jar
+```
+
+### Example 8: Dart CLI Tool
+
+```bash
+# Project structure:
+# my-dart-cli/
+# ├── pubspec.yaml
+# ├── bin/
+# │   └── main.dart
+# └── lib/
+
+# Auto-detect and build
+docker run --rm -v $(pwd):/workspace \
+  ghcr.io/binmgr/toolchain:latest --auto-build
+
+# Manual build with custom output name
+docker run --rm -v $(pwd):/workspace \
+  ghcr.io/binmgr/toolchain:latest \
+  bash -c '
+    dart pub get
+    dart compile exe bin/main.dart -o mycli
+  '
+
+# Build optimized release binary
+docker run --rm -v $(pwd):/workspace \
+  ghcr.io/binmgr/toolchain:latest \
+  dart compile exe bin/main.dart -o mycli --verbosity=error
+
+# Strip and compress (optional)
+docker run --rm -v $(pwd):/workspace \
+  ghcr.io/binmgr/toolchain:latest \
+  bash -c '
+    dart compile exe bin/main.dart -o mycli
+    strip mycli
+    upx --best mycli
   '
 ```
 
@@ -781,6 +1074,36 @@ ENTRYPOINT ["/binary"]
 ---
 
 ## 🔧 Troubleshooting
+
+### Quick Troubleshooting Matrix
+
+| Problem | Target | Likely Cause | Solution |
+|---------|--------|--------------|----------|
+| `not a dynamic executable` error | All Linux | Not fully static | Add `-static` to LDFLAGS |
+| `cannot find -lc` | ARM64/ARMv7/RISC-V | Wrong sysroot | Use `TARGET=` env var |
+| `undefined reference to __*` | Windows | Missing runtime | Add `-static-libgcc` |
+| `Mach-O file has no segments` | macOS | Incomplete build | Check OSXCross setup |
+| `GLIBC_2.x not found` | Linux targets | Using glibc not musl | Ensure musl toolchain |
+| Header not found | All | Missing pkg-config path | Set PKG_CONFIG_PATH |
+| Slow compilation | All | No caching | Enable ccache/sccache |
+| Large binary size | All | Debug symbols | Use `strip` and `upx` |
+| WASM runtime error | wasi | Wrong target | Use wasi-sdk, not emcc |
+| Cosmo build fails | cosmo | Incompatible code | Check cosmo limitations |
+
+### Built-in Diagnostic Commands
+
+```bash
+# Test if a target compiles correctly
+docker run --rm ghcr.io/binmgr/toolchain:latest --test linux-arm64
+
+# Check if your binary is truly static
+docker run --rm -v $(pwd):/workspace \
+  ghcr.io/binmgr/toolchain:latest --check-static ./mybinary
+
+# Get binary size breakdown
+docker run --rm -v $(pwd):/workspace \
+  ghcr.io/binmgr/toolchain:latest --size-report ./mybinary
+```
 
 ### Binary fails with "cannot execute: required file not found"
 

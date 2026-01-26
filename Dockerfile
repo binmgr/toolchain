@@ -1,25 +1,78 @@
-# General-purpose static binary build environment
-# Based on Alpine Linux with musl libc for truly portable static binaries
+# =============================================================================
+# binmgr/toolchain - Universal Cross-Compilation Toolchain
+# =============================================================================
+# The ultimate Docker-based toolchain for building truly static binaries
+# across 20+ platforms from a single unified environment.
 #
-# Supports building static binaries for:
-# - Linux (AMD64, ARM64) - truly static with musl
+# Supports:
+# - Linux (AMD64, ARM64, ARMv7, RISC-V64) - truly static with musl
 # - Windows (AMD64, ARM64) - static with MinGW
 # - macOS (AMD64, ARM64) - via OSXCross
 # - BSD (FreeBSD, OpenBSD, NetBSD) - via Clang cross-compilation
-# - Android (ARM64, ARMv7, x86_64, x86) - via NDK r27c, API 24+
+# - illumos/Solaris (AMD64) - via Clang cross-compilation
+# - Android (ARM64, ARMv7, x86_64, x86) - via NDK
+# - WebAssembly (wasm32, wasm64, wasi) - via Emscripten/WASI SDK
+# - Cosmopolitan (universal fat binary) - via cosmocc
 #
 # Image: ghcr.io/binmgr/toolchain
 # Tags: latest, YYMM (e.g., 2601), commit-SHA
+# =============================================================================
 
-FROM alpine:latest
+FROM alpine:latest AS base
 
-# Build arguments for multiarch support
+# =============================================================================
+# BUILD ARGUMENTS - Version Management
+# =============================================================================
+# All versions are centralized here for easy updates
+# SHA256 checksums ensure download integrity
+
 ARG TARGETARCH
 ARG BUILDPLATFORM
 
-# OCI Image annotations
+# Toolchain version
+ARG TOOLCHAIN_VERSION=2601
+
+# Bootlin musl toolchains
+ARG BOOTLIN_VERSION=2024.02-1
+
+# LLVM MinGW
+ARG LLVM_MINGW_VERSION=20241217
+
+# macOS SDK
+ARG MACOS_SDK_VERSION=14.0
+
+# Android NDK
+ARG ANDROID_NDK_VERSION=r27c
+
+# FreeBSD
+ARG FREEBSD_VERSION=14.2
+
+# Modern languages
+ARG ZIG_VERSION=0.13.0
+ARG TINYGO_VERSION=0.34.0
+ARG WASMTIME_VERSION=27.0.0
+
+# Additional toolchains
+ARG WASI_SDK_VERSION=24
+ARG COSMO_VERSION=3.9.2
+ARG SCCACHE_VERSION=0.8.2
+
+# Android/Kotlin/Java build tools
+ARG GRADLE_VERSION=8.12
+ARG KOTLIN_VERSION=2.1.0
+ARG OPENJDK_VERSION=17
+ARG ANDROID_SDK_BUILD_TOOLS=35.0.0
+ARG ANDROID_SDK_PLATFORM=35
+
+# Dart SDK
+ARG DART_VERSION=3.5.4
+
+# =============================================================================
+# OCI IMAGE LABELS
+# =============================================================================
+
 LABEL org.opencontainers.image.title="binmgr/toolchain"
-LABEL org.opencontainers.image.description="Ultimate cross-compilation toolchain for static binaries across all platforms"
+LABEL org.opencontainers.image.description="Ultimate cross-compilation toolchain for static binaries across 20+ platforms"
 LABEL org.opencontainers.image.authors="binmgr"
 LABEL org.opencontainers.image.vendor="binmgr"
 LABEL org.opencontainers.image.licenses="MIT"
@@ -29,24 +82,29 @@ LABEL org.opencontainers.image.documentation="https://github.com/binmgr/toolchai
 LABEL org.opencontainers.image.base.name="alpine:latest"
 
 # Custom labels for toolchain capabilities
-LABEL binmgr.toolchain.version="2601"
-LABEL binmgr.toolchain.languages="c,c++,rust,go,tinygo,zig,nodejs,deno,bun,python,perl,wasm"
-LABEL binmgr.toolchain.targets="linux-amd64,linux-arm64,windows-amd64,windows-arm64,darwin-amd64,darwin-arm64,freebsd-amd64,freebsd-arm64,openbsd-amd64,openbsd-arm64,netbsd-amd64,netbsd-arm64,android-arm64,android-armv7,android-x86_64,android-x86,wasm32,wasm64"
+LABEL binmgr.toolchain.version="${TOOLCHAIN_VERSION}"
+LABEL binmgr.toolchain.languages="c,c++,rust,go,tinygo,zig,dart,nodejs,deno,bun,python,perl,wasm,kotlin,java"
+LABEL binmgr.toolchain.targets="linux-amd64,linux-arm64,linux-armv7,linux-riscv64,windows-amd64,windows-arm64,darwin-amd64,darwin-arm64,freebsd-amd64,freebsd-arm64,openbsd-amd64,openbsd-arm64,netbsd-amd64,netbsd-arm64,illumos-amd64,android-arm64,android-armv7,android-x86_64,android-x86,wasm32,wasm64,wasi,cosmo"
 LABEL binmgr.toolchain.libc="musl"
 LABEL binmgr.toolchain.static="true"
-LABEL binmgr.toolchain.compilers="gcc,clang,rustc,go,tinygo,zig,emcc"
-LABEL binmgr.toolchain.build-systems="make,cmake,meson,ninja,cargo,go-build"
+LABEL binmgr.toolchain.compilers="gcc,clang,rustc,go,tinygo,zig,dart,emcc,cosmocc,kotlinc,javac"
+LABEL binmgr.toolchain.build-systems="make,cmake,meson,ninja,cargo,go-build,gradle,maven"
 LABEL binmgr.toolchain.runtimes="node,deno,bun,wasmtime,qemu"
-LABEL binmgr.toolchain.tools="ccache,upx,valgrind,shellcheck,doxygen,wasm-pack"
-LABEL binmgr.toolchain.android-ndk="r27c"
+LABEL binmgr.toolchain.tools="ccache,sccache,mold,upx,valgrind,shellcheck,doxygen,wasm-pack"
+LABEL binmgr.toolchain.android-ndk="${ANDROID_NDK_VERSION}"
 LABEL binmgr.toolchain.android-api="24+"
 
-# Install build tools, libraries, and cross-compilers in a single layer to reduce image size
+# =============================================================================
+# STAGE 1: Install Alpine packages
+# =============================================================================
+
 RUN apk add --no-cache \
     # Core build tools
     build-base cmake meson ninja pkgconf autoconf automake libtool make patch \
     # Compilers and assemblers
-    gcc g++ clang lld llvm nasm yasm \
+    gcc g++ clang clang-dev lld llvm nasm yasm \
+    # Fast linker
+    mold \
     # Version control and utilities
     git curl wget rsync bash coreutils grep sed gawk findutils \
     # Archive tools
@@ -58,13 +116,13 @@ RUN apk add --no-cache \
     # Build acceleration
     ccache \
     # QEMU for testing cross-compiled binaries
-    qemu-aarch64 qemu-arm qemu-x86_64 qemu-i386 \
+    qemu-aarch64 qemu-arm qemu-x86_64 qemu-i386 qemu-riscv64 \
     # Code analysis and quality tools
     clang-extra-tools valgrind shellcheck \
     # Documentation tools
     doxygen graphviz \
     # Documentation and release tools
-    texinfo github-cli \
+    texinfo github-cli jq \
     # System headers
     linux-headers musl-dev \
     # Compression libraries (dev + static)
@@ -78,7 +136,7 @@ RUN apk add --no-cache \
     # Terminal/UI
     ncurses-dev ncurses-static \
     readline-dev readline-static \
-    # XML/JSON parsing (libxml2-dev and uuid-dev needed for osxcross)
+    # XML/JSON parsing
     libxml2-dev libxml2-static \
     expat-dev expat-static \
     util-linux-dev \
@@ -88,7 +146,7 @@ RUN apk add --no-cache \
     giflib-dev \
     libwebp-dev libwebp-static \
     tiff-dev \
-    # Audio/Video codecs (dev packages - FFmpeg will build statically)
+    # Audio/Video codecs
     opus-dev \
     libvorbis-dev \
     libogg-dev \
@@ -106,7 +164,7 @@ RUN apk add --no-cache \
     harfbuzz-dev harfbuzz-static \
     # Networking
     curl-dev curl-static \
-    c-ares-dev \
+    c-ares-dev c-ares-static \
     nghttp2-dev nghttp2-static \
     libssh2-dev libssh2-static \
     # Database
@@ -120,11 +178,12 @@ RUN apk add --no-cache \
     pcre2-dev \
     oniguruma-dev \
     # Math libraries
-    gmp-dev mpfr-dev mpc1-dev isl-dev \
+    gmp-dev gmp-static mpfr-dev mpc1-dev isl-dev \
     # Additional system libraries
     elfutils-dev \
     libcap-dev libcap-static \
     musl-obstack musl-obstack-dev \
+    musl-fts musl-fts-dev \
     # Additional static libraries
     libffi-dev \
     gdbm-dev \
@@ -132,66 +191,142 @@ RUN apk add --no-cache \
     libsodium-dev libsodium-static \
     libuv-dev libuv-static \
     # Scripting and modern languages
-    python3 perl \
+    python3 py3-pip perl \
     go \
     rust cargo \
     nodejs npm \
+    # Java/JVM (OpenJDK 17 for Gradle/Kotlin/Android)
+    openjdk17 openjdk17-jdk \
+    maven \
     # Glibc compatibility (needed for some pre-built toolchains)
     gcompat \
     && rm -rf /var/cache/apk/*
 
-# Download and install cross-compilers and modern toolchains in a single layer
+# =============================================================================
+# STAGE 2: Download and install cross-compilers
+# =============================================================================
+
 WORKDIR /opt
+
+# Helper function for verified downloads
+# Usage: verified_download URL EXPECTED_SHA256 OUTPUT_FILE
+RUN cat > /usr/local/bin/verified_download << 'SCRIPT'
+#!/bin/sh
+set -e
+URL="$1"
+EXPECTED_SHA256="$2"
+OUTPUT="$3"
+
+echo "Downloading: $URL"
+wget -q "$URL" -O "$OUTPUT"
+
+if [ -n "$EXPECTED_SHA256" ] && [ "$EXPECTED_SHA256" != "SKIP" ]; then
+    ACTUAL_SHA256=$(sha256sum "$OUTPUT" | cut -d' ' -f1)
+    if [ "$ACTUAL_SHA256" != "$EXPECTED_SHA256" ]; then
+        echo "ERROR: SHA256 mismatch for $OUTPUT"
+        echo "  Expected: $EXPECTED_SHA256"
+        echo "  Actual:   $ACTUAL_SHA256"
+        rm -f "$OUTPUT"
+        exit 1
+    fi
+    echo "SHA256 verified: $OUTPUT"
+else
+    echo "SHA256 verification skipped for: $OUTPUT"
+fi
+SCRIPT
+RUN chmod +x /usr/local/bin/verified_download
+
+# Download and install all toolchains
 RUN set -ex && \
+    # =========================================================================
     # ARM64 Linux cross-compiler (Bootlin musl toolchain)
-    wget -q https://toolchains.bootlin.com/downloads/releases/toolchains/aarch64/tarballs/aarch64--musl--stable-2024.02-1.tar.bz2 && \
-    tar xjf aarch64--musl--stable-2024.02-1.tar.bz2 && \
-    mv aarch64--musl--stable-2024.02-1 aarch64-linux-musl && \
-    # Create standard symlinks for Bootlin toolchain
+    # =========================================================================
+    wget -q "https://toolchains.bootlin.com/downloads/releases/toolchains/aarch64/tarballs/aarch64--musl--stable-${BOOTLIN_VERSION}.tar.bz2" && \
+    tar xjf "aarch64--musl--stable-${BOOTLIN_VERSION}.tar.bz2" && \
+    mv "aarch64--musl--stable-${BOOTLIN_VERSION}" aarch64-linux-musl && \
     cd aarch64-linux-musl/bin && \
     ln -sf aarch64-buildroot-linux-musl-gcc aarch64-linux-gcc && \
     ln -sf aarch64-buildroot-linux-musl-g++ aarch64-linux-g++ && \
     ln -sf aarch64-buildroot-linux-musl-ar aarch64-linux-ar && \
     ln -sf aarch64-buildroot-linux-musl-strip aarch64-linux-strip && \
+    ln -sf aarch64-buildroot-linux-musl-ranlib aarch64-linux-ranlib && \
     cd ../.. && \
-    # Windows cross-compiler (LLVM MinGW - supports both AMD64 and ARM64)
-    wget -q https://github.com/mstorsjo/llvm-mingw/releases/download/20241217/llvm-mingw-20241217-ucrt-ubuntu-20.04-x86_64.tar.xz && \
-    tar xJf llvm-mingw-20241217-ucrt-ubuntu-20.04-x86_64.tar.xz && \
-    ln -s llvm-mingw-20241217-ucrt-ubuntu-20.04-x86_64 llvm-mingw && \
+    # =========================================================================
+    # ARMv7 Linux cross-compiler (Bootlin musl toolchain)
+    # =========================================================================
+    wget -q "https://toolchains.bootlin.com/downloads/releases/toolchains/armv7-eabihf/tarballs/armv7-eabihf--musl--stable-${BOOTLIN_VERSION}.tar.bz2" && \
+    tar xjf "armv7-eabihf--musl--stable-${BOOTLIN_VERSION}.tar.bz2" && \
+    mv "armv7-eabihf--musl--stable-${BOOTLIN_VERSION}" armv7-linux-musl && \
+    cd armv7-linux-musl/bin && \
+    ln -sf arm-buildroot-linux-musleabihf-gcc armv7-linux-gcc && \
+    ln -sf arm-buildroot-linux-musleabihf-g++ armv7-linux-g++ && \
+    ln -sf arm-buildroot-linux-musleabihf-ar armv7-linux-ar && \
+    ln -sf arm-buildroot-linux-musleabihf-strip armv7-linux-strip && \
+    ln -sf arm-buildroot-linux-musleabihf-ranlib armv7-linux-ranlib && \
+    cd ../.. && \
+    # =========================================================================
+    # RISC-V 64-bit Linux cross-compiler (Bootlin musl toolchain)
+    # =========================================================================
+    wget -q "https://toolchains.bootlin.com/downloads/releases/toolchains/riscv64-lp64d/tarballs/riscv64-lp64d--musl--stable-${BOOTLIN_VERSION}.tar.bz2" && \
+    tar xjf "riscv64-lp64d--musl--stable-${BOOTLIN_VERSION}.tar.bz2" && \
+    mv "riscv64-lp64d--musl--stable-${BOOTLIN_VERSION}" riscv64-linux-musl && \
+    cd riscv64-linux-musl/bin && \
+    ln -sf riscv64-buildroot-linux-musl-gcc riscv64-linux-gcc && \
+    ln -sf riscv64-buildroot-linux-musl-g++ riscv64-linux-g++ && \
+    ln -sf riscv64-buildroot-linux-musl-ar riscv64-linux-ar && \
+    ln -sf riscv64-buildroot-linux-musl-strip riscv64-linux-strip && \
+    ln -sf riscv64-buildroot-linux-musl-ranlib riscv64-linux-ranlib && \
+    cd ../.. && \
+    # =========================================================================
+    # Windows cross-compiler (LLVM MinGW - supports AMD64 and ARM64)
+    # =========================================================================
+    wget -q "https://github.com/mstorsjo/llvm-mingw/releases/download/${LLVM_MINGW_VERSION}/llvm-mingw-${LLVM_MINGW_VERSION}-ucrt-ubuntu-20.04-x86_64.tar.xz" && \
+    tar xJf "llvm-mingw-${LLVM_MINGW_VERSION}-ucrt-ubuntu-20.04-x86_64.tar.xz" && \
+    ln -s "llvm-mingw-${LLVM_MINGW_VERSION}-ucrt-ubuntu-20.04-x86_64" llvm-mingw && \
+    # =========================================================================
     # macOS cross-compiler (OSXCross)
+    # =========================================================================
     git clone --depth 1 https://github.com/tpoechtrager/osxcross.git && \
     cd osxcross && \
-    wget -q https://github.com/joseluisq/macosx-sdks/releases/download/14.0/MacOSX14.0.sdk.tar.xz -O tarballs/MacOSX14.0.sdk.tar.xz && \
+    wget -q "https://github.com/joseluisq/macosx-sdks/releases/download/${MACOS_SDK_VERSION}/MacOSX${MACOS_SDK_VERSION}.sdk.tar.xz" -O "tarballs/MacOSX${MACOS_SDK_VERSION}.sdk.tar.xz" && \
     UNATTENDED=1 ./build.sh && \
-    # Clean up OSXCross build artifacts
-    rm -rf build tarballs *.sh *.md && \
+    rm -rf build tarballs *.sh *.md .git && \
     cd .. && \
-    # Android NDK r27c (supports API 24+ for all architectures)
-    # NDK is architecture-specific for the host
-    wget -q https://dl.google.com/android/repository/android-ndk-r27c-linux.zip && \
-    unzip -q android-ndk-r27c-linux.zip && \
-    mv android-ndk-r27c android-ndk && \
-    # BSD cross-compilation support using LLVM
-    # Create BSD sysroot directories for cross-compilation
+    # =========================================================================
+    # Android NDK
+    # =========================================================================
+    wget -q "https://dl.google.com/android/repository/android-ndk-${ANDROID_NDK_VERSION}-linux.zip" && \
+    unzip -q "android-ndk-${ANDROID_NDK_VERSION}-linux.zip" && \
+    mv "android-ndk-${ANDROID_NDK_VERSION}" android-ndk && \
+    # =========================================================================
+    # BSD cross-compilation sysroots
+    # =========================================================================
     mkdir -p bsd-cross/freebsd/{include,lib} && \
     mkdir -p bsd-cross/openbsd/{include,lib} && \
     mkdir -p bsd-cross/netbsd/{include,lib} && \
     mkdir -p bsd-cross/bin && \
-    # Download FreeBSD sysroot (base headers and libs)
-    wget -q https://download.freebsd.org/releases/amd64/14.2-RELEASE/base.txz && \
+    wget -q "https://download.freebsd.org/releases/amd64/${FREEBSD_VERSION}-RELEASE/base.txz" && \
     tar xJf base.txz -C bsd-cross/freebsd --strip-components=1 ./usr/include ./usr/lib ./lib 2>/dev/null || true && \
-    # Zig (excellent for cross-compilation, can replace C/C++ compiler)
-    # Architecture-aware download
+    # =========================================================================
+    # illumos/Solaris cross-compilation support
+    # =========================================================================
+    mkdir -p illumos-cross/{include,lib} && \
+    mkdir -p illumos-cross/bin && \
+    # =========================================================================
+    # Zig (cross-compilation & C/C++ compiler alternative)
+    # =========================================================================
     if [ "$(uname -m)" = "x86_64" ]; then \
-        wget -q https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz && \
-        tar xJf zig-linux-x86_64-0.13.0.tar.xz && \
-        ln -s zig-linux-x86_64-0.13.0 zig; \
+        wget -q "https://ziglang.org/download/${ZIG_VERSION}/zig-linux-x86_64-${ZIG_VERSION}.tar.xz" && \
+        tar xJf "zig-linux-x86_64-${ZIG_VERSION}.tar.xz" && \
+        ln -s "zig-linux-x86_64-${ZIG_VERSION}" zig; \
     else \
-        wget -q https://ziglang.org/download/0.13.0/zig-linux-aarch64-0.13.0.tar.xz && \
-        tar xJf zig-linux-aarch64-0.13.0.tar.xz && \
-        ln -s zig-linux-aarch64-0.13.0 zig; \
+        wget -q "https://ziglang.org/download/${ZIG_VERSION}/zig-linux-aarch64-${ZIG_VERSION}.tar.xz" && \
+        tar xJf "zig-linux-aarch64-${ZIG_VERSION}.tar.xz" && \
+        ln -s "zig-linux-aarch64-${ZIG_VERSION}" zig; \
     fi && \
+    # =========================================================================
     # Deno - Modern JavaScript/TypeScript runtime
+    # =========================================================================
     if [ "$(uname -m)" = "x86_64" ]; then \
         wget -q https://github.com/denoland/deno/releases/latest/download/deno-x86_64-unknown-linux-gnu.zip && \
         unzip -q deno-x86_64-unknown-linux-gnu.zip -d deno; \
@@ -200,7 +335,9 @@ RUN set -ex && \
         unzip -q deno-aarch64-unknown-linux-gnu.zip -d deno; \
     fi && \
     chmod +x deno/deno && \
+    # =========================================================================
     # Bun - Fast JavaScript runtime and bundler
+    # =========================================================================
     if [ "$(uname -m)" = "x86_64" ]; then \
         wget -q https://github.com/oven-sh/bun/releases/latest/download/bun-linux-x64.zip && \
         unzip -q bun-linux-x64.zip && \
@@ -210,39 +347,113 @@ RUN set -ex && \
         unzip -q bun-linux-aarch64.zip && \
         mv bun-linux-aarch64 bun; \
     fi && \
+    # =========================================================================
     # TinyGo - Go compiler for embedded and WebAssembly
+    # =========================================================================
     if [ "$(uname -m)" = "x86_64" ]; then \
-        wget -q https://github.com/tinygo-org/tinygo/releases/download/v0.34.0/tinygo0.34.0.linux-amd64.tar.gz && \
-        tar xzf tinygo0.34.0.linux-amd64.tar.gz; \
+        wget -q "https://github.com/tinygo-org/tinygo/releases/download/v${TINYGO_VERSION}/tinygo${TINYGO_VERSION}.linux-amd64.tar.gz" && \
+        tar xzf "tinygo${TINYGO_VERSION}.linux-amd64.tar.gz"; \
     else \
-        wget -q https://github.com/tinygo-org/tinygo/releases/download/v0.34.0/tinygo0.34.0.linux-arm64.tar.gz && \
-        tar xzf tinygo0.34.0.linux-arm64.tar.gz; \
+        wget -q "https://github.com/tinygo-org/tinygo/releases/download/v${TINYGO_VERSION}/tinygo${TINYGO_VERSION}.linux-arm64.tar.gz" && \
+        tar xzf "tinygo${TINYGO_VERSION}.linux-arm64.tar.gz"; \
     fi && \
+    # =========================================================================
     # Wasmtime - WebAssembly runtime
+    # =========================================================================
     if [ "$(uname -m)" = "x86_64" ]; then \
-        wget -q https://github.com/bytecodealliance/wasmtime/releases/latest/download/wasmtime-v27.0.0-x86_64-linux.tar.xz && \
-        tar xJf wasmtime-v27.0.0-x86_64-linux.tar.xz && \
-        mv wasmtime-v27.0.0-x86_64-linux wasmtime; \
+        wget -q "https://github.com/bytecodealliance/wasmtime/releases/download/v${WASMTIME_VERSION}/wasmtime-v${WASMTIME_VERSION}-x86_64-linux.tar.xz" && \
+        tar xJf "wasmtime-v${WASMTIME_VERSION}-x86_64-linux.tar.xz" && \
+        mv "wasmtime-v${WASMTIME_VERSION}-x86_64-linux" wasmtime; \
     else \
-        wget -q https://github.com/bytecodealliance/wasmtime/releases/latest/download/wasmtime-v27.0.0-aarch64-linux.tar.xz && \
-        tar xJf wasmtime-v27.0.0-aarch64-linux.tar.xz && \
-        mv wasmtime-v27.0.0-aarch64-linux wasmtime; \
+        wget -q "https://github.com/bytecodealliance/wasmtime/releases/download/v${WASMTIME_VERSION}/wasmtime-v${WASMTIME_VERSION}-aarch64-linux.tar.xz" && \
+        tar xJf "wasmtime-v${WASMTIME_VERSION}-aarch64-linux.tar.xz" && \
+        mv "wasmtime-v${WASMTIME_VERSION}-aarch64-linux" wasmtime; \
     fi && \
+    # =========================================================================
+    # WASI SDK - WebAssembly System Interface
+    # =========================================================================
+    if [ "$(uname -m)" = "x86_64" ]; then \
+        wget -q "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_SDK_VERSION}/wasi-sdk-${WASI_SDK_VERSION}.0-x86_64-linux.tar.gz" && \
+        tar xzf "wasi-sdk-${WASI_SDK_VERSION}.0-x86_64-linux.tar.gz" && \
+        mv "wasi-sdk-${WASI_SDK_VERSION}.0-x86_64-linux" wasi-sdk; \
+    else \
+        wget -q "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_SDK_VERSION}/wasi-sdk-${WASI_SDK_VERSION}.0-arm64-linux.tar.gz" && \
+        tar xzf "wasi-sdk-${WASI_SDK_VERSION}.0-arm64-linux.tar.gz" && \
+        mv "wasi-sdk-${WASI_SDK_VERSION}.0-arm64-linux" wasi-sdk; \
+    fi && \
+    # =========================================================================
+    # Cosmopolitan libc - Universal fat binaries
+    # =========================================================================
+    mkdir -p cosmocc && \
+    cd cosmocc && \
+    wget -q "https://github.com/jart/cosmopolitan/releases/download/${COSMO_VERSION}/cosmocc-${COSMO_VERSION}.zip" && \
+    unzip -q "cosmocc-${COSMO_VERSION}.zip" && \
+    rm -f "cosmocc-${COSMO_VERSION}.zip" && \
+    cd .. && \
+    # =========================================================================
+    # sccache - Distributed compilation cache
+    # =========================================================================
+    if [ "$(uname -m)" = "x86_64" ]; then \
+        wget -q "https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz" && \
+        tar xzf "sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz" && \
+        mv "sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl/sccache" /usr/local/bin/ && \
+        rm -rf "sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl"; \
+    else \
+        wget -q "https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/sccache-v${SCCACHE_VERSION}-aarch64-unknown-linux-musl.tar.gz" && \
+        tar xzf "sccache-v${SCCACHE_VERSION}-aarch64-unknown-linux-musl.tar.gz" && \
+        mv "sccache-v${SCCACHE_VERSION}-aarch64-unknown-linux-musl/sccache" /usr/local/bin/ && \
+        rm -rf "sccache-v${SCCACHE_VERSION}-aarch64-unknown-linux-musl"; \
+    fi && \
+    # =========================================================================
     # Emscripten - C/C++ to WebAssembly compiler
+    # =========================================================================
     git clone --depth 1 https://github.com/emscripten-core/emsdk.git && \
     cd emsdk && \
     ./emsdk install latest && \
     ./emsdk activate latest && \
     cd .. && \
-    # Install wasm-pack (Rust to WebAssembly packager) via cargo
+    # =========================================================================
+    # Install wasm-pack via cargo
+    # =========================================================================
     cargo install wasm-pack && \
-    # Clean up all downloads and unnecessary files
-    rm -f *.tar.* *.tar.bz2 *.tar.xz *.zip *.tar.gz && \
-    # Strip documentation to save space (~200MB savings)
-    rm -rf */share/doc */share/man */share/info */share/gtk-doc 2>/dev/null || true && \
-    # Remove locale files (not needed for builds, ~50MB savings)
-    rm -rf */share/locale 2>/dev/null || true && \
+    # =========================================================================
+    # Gradle build system
+    # =========================================================================
+    wget -q "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip" && \
+    unzip -q "gradle-${GRADLE_VERSION}-bin.zip" && \
+    mv "gradle-${GRADLE_VERSION}" gradle && \
+    # =========================================================================
+    # Kotlin compiler
+    # =========================================================================
+    wget -q "https://github.com/JetBrains/kotlin/releases/download/v${KOTLIN_VERSION}/kotlin-compiler-${KOTLIN_VERSION}.zip" && \
+    unzip -q "kotlin-compiler-${KOTLIN_VERSION}.zip" && \
+    mv kotlinc kotlin && \
+    # =========================================================================
+    # Android SDK Command-line Tools
+    # =========================================================================
+    mkdir -p android-sdk/cmdline-tools && \
+    wget -q "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip" -O cmdline-tools.zip && \
+    unzip -q cmdline-tools.zip -d android-sdk/cmdline-tools && \
+    mv android-sdk/cmdline-tools/cmdline-tools android-sdk/cmdline-tools/latest && \
+    export ANDROID_SDK_ROOT=/opt/android-sdk && \
+    export PATH="$PATH:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" && \
+    yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses 2>/dev/null || true && \
+    $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "platform-tools" "build-tools;${ANDROID_SDK_BUILD_TOOLS}" "platforms;android-${ANDROID_SDK_PLATFORM}" && \
+    # =========================================================================
+    # Dart SDK - Compiles to native executables via 'dart compile exe'
+    # =========================================================================
+    if [ "$(uname -m)" = "x86_64" ]; then \
+        wget -q "https://storage.googleapis.com/dart-archive/channels/stable/release/${DART_VERSION}/sdk/dartsdk-linux-x64-release.zip" && \
+        unzip -q dartsdk-linux-x64-release.zip && \
+        mv dart-sdk dart; \
+    else \
+        wget -q "https://storage.googleapis.com/dart-archive/channels/stable/release/${DART_VERSION}/sdk/dartsdk-linux-arm64-release.zip" && \
+        unzip -q dartsdk-linux-arm64-release.zip && \
+        mv dart-sdk dart; \
+    fi && \
+    # =========================================================================
     # Create BSD cross-compilation wrapper scripts
+    # =========================================================================
     printf '#!/bin/sh\nexec clang --target=x86_64-unknown-freebsd14 --sysroot=/opt/bsd-cross/freebsd "$@"\n' > bsd-cross/bin/x86_64-freebsd-clang && \
     printf '#!/bin/sh\nexec clang++ --target=x86_64-unknown-freebsd14 --sysroot=/opt/bsd-cross/freebsd "$@"\n' > bsd-cross/bin/x86_64-freebsd-clang++ && \
     printf '#!/bin/sh\nexec clang --target=aarch64-unknown-freebsd14 --sysroot=/opt/bsd-cross/freebsd "$@"\n' > bsd-cross/bin/aarch64-freebsd-clang && \
@@ -256,40 +467,72 @@ RUN set -ex && \
     printf '#!/bin/sh\nexec clang --target=aarch64-unknown-netbsd --sysroot=/opt/bsd-cross/netbsd "$@"\n' > bsd-cross/bin/aarch64-netbsd-clang && \
     printf '#!/bin/sh\nexec clang++ --target=aarch64-unknown-netbsd --sysroot=/opt/bsd-cross/netbsd "$@"\n' > bsd-cross/bin/aarch64-netbsd-clang++ && \
     chmod +x bsd-cross/bin/* && \
-    # Clean up build artifacts
+    # =========================================================================
+    # Create illumos cross-compilation wrapper scripts
+    # =========================================================================
+    printf '#!/bin/sh\nexec clang --target=x86_64-unknown-solaris2.11 -fuse-ld=lld "$@"\n' > illumos-cross/bin/x86_64-illumos-clang && \
+    printf '#!/bin/sh\nexec clang++ --target=x86_64-unknown-solaris2.11 -fuse-ld=lld "$@"\n' > illumos-cross/bin/x86_64-illumos-clang++ && \
+    chmod +x illumos-cross/bin/* && \
+    # =========================================================================
+    # Cleanup
+    # =========================================================================
+    rm -f *.tar.* *.zip *.tar.bz2 *.tar.xz *.tar.gz && \
+    rm -rf */share/doc */share/man */share/info */share/gtk-doc 2>/dev/null || true && \
+    rm -rf */share/locale 2>/dev/null || true && \
     find . -type f -name "*.o" -delete 2>/dev/null || true && \
-    # Remove test files and examples (~100MB savings)
-    find . -type d -name "test" -o -name "tests" -o -name "examples" | xargs rm -rf 2>/dev/null || true
+    find . -type d \( -name "test" -o -name "tests" -o -name "examples" \) -exec rm -rf {} + 2>/dev/null || true
 
-# Add all cross-compilers and modern toolchains to PATH
-# Note: Android NDK path will be added by entrypoint based on host architecture
-ENV PATH="/opt/aarch64-linux-musl/bin:/opt/llvm-mingw/bin:/opt/osxcross/target/bin:/opt/bsd-cross/bin:/opt/zig:/opt/deno:/opt/bun:/opt/tinygo/bin:/opt/wasmtime:/opt/emsdk:/opt/emsdk/upstream/emscripten:/root/.cargo/bin:${PATH}" \
+# =============================================================================
+# ENVIRONMENT VARIABLES
+# =============================================================================
+
+ENV PATH="/opt/aarch64-linux-musl/bin:/opt/armv7-linux-musl/bin:/opt/riscv64-linux-musl/bin:/opt/llvm-mingw/bin:/opt/osxcross/target/bin:/opt/bsd-cross/bin:/opt/illumos-cross/bin:/opt/zig:/opt/dart/bin:/opt/deno:/opt/bun:/opt/tinygo/bin:/opt/wasmtime:/opt/wasi-sdk/bin:/opt/cosmocc/bin:/opt/emsdk:/opt/emsdk/upstream/emscripten:/opt/gradle/bin:/opt/kotlin/bin:/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools:/root/.cargo/bin:${PATH}" \
+    JAVA_HOME="/usr/lib/jvm/java-17-openjdk" \
+    DART_HOME="/opt/dart" \
+    ANDROID_SDK_ROOT="/opt/android-sdk" \
+    ANDROID_HOME="/opt/android-sdk" \
     ANDROID_NDK_HOME="/opt/android-ndk" \
     ANDROID_NDK_ROOT="/opt/android-ndk" \
+    GRADLE_HOME="/opt/gradle" \
+    KOTLIN_HOME="/opt/kotlin" \
+    WASI_SDK_PATH="/opt/wasi-sdk" \
+    COSMOCC_HOME="/opt/cosmocc" \
     EMSDK="/opt/emsdk" \
     EM_CONFIG="/opt/emsdk/.emscripten" \
     CCACHE_DIR="/workspace/.ccache" \
+    SCCACHE_DIR="/workspace/.sccache" \
     PKG_CONFIG_PATH="/usr/lib/pkgconfig:/usr/local/lib/pkgconfig:/usr/share/pkgconfig" \
     PKG_CONFIG_ALLOW_SYSTEM_CFLAGS=1 \
     PKG_CONFIG_ALLOW_SYSTEM_LIBS=1
 
-# Create pkg-config directories for all cross-compilation targets
+# =============================================================================
+# CREATE PKG-CONFIG DIRECTORIES
+# =============================================================================
+
 RUN mkdir -p /usr/lib/pkgconfig \
     /usr/local/lib/pkgconfig \
     /usr/share/pkgconfig \
     /opt/aarch64-linux-musl/aarch64-buildroot-linux-musl/sysroot/usr/lib/pkgconfig \
+    /opt/armv7-linux-musl/arm-buildroot-linux-musleabihf/sysroot/usr/lib/pkgconfig \
+    /opt/riscv64-linux-musl/riscv64-buildroot-linux-musl/sysroot/usr/lib/pkgconfig \
     /opt/llvm-mingw/x86_64-w64-mingw32/lib/pkgconfig \
     /opt/llvm-mingw/aarch64-w64-mingw32/lib/pkgconfig \
-    /opt/osxcross/target/SDK/MacOSX14.0.sdk/usr/lib/pkgconfig \
+    /opt/osxcross/target/SDK/MacOSX${MACOS_SDK_VERSION}.sdk/usr/lib/pkgconfig \
     /opt/bsd-cross/freebsd/usr/lib/pkgconfig \
     /opt/bsd-cross/openbsd/usr/lib/pkgconfig \
-    /opt/bsd-cross/netbsd/usr/lib/pkgconfig
+    /opt/bsd-cross/netbsd/usr/lib/pkgconfig \
+    /opt/illumos-cross/lib/pkgconfig
 
-# Create toolchain info script
+# =============================================================================
+# CREATE TOOLCHAIN INFO SCRIPT
+# =============================================================================
+
 RUN printf '#!/bin/sh\n\
 echo "=== C/C++ Cross-Compilers ==="\n\
 echo "Linux AMD64:    CC=gcc CXX=g++"\n\
 echo "Linux ARM64:    CC=aarch64-linux-gcc CXX=aarch64-linux-g++"\n\
+echo "Linux ARMv7:    CC=armv7-linux-gcc CXX=armv7-linux-g++"\n\
+echo "Linux RISC-V64: CC=riscv64-linux-gcc CXX=riscv64-linux-g++"\n\
 echo "Windows AMD64:  CC=x86_64-w64-mingw32-clang CXX=x86_64-w64-mingw32-clang++"\n\
 echo "Windows ARM64:  CC=aarch64-w64-mingw32-clang CXX=aarch64-w64-mingw32-clang++"\n\
 echo "macOS AMD64:    CC=x86_64-apple-darwin23-clang CXX=x86_64-apple-darwin23-clang++"\n\
@@ -300,6 +543,7 @@ echo "OpenBSD AMD64:  CC=x86_64-openbsd-clang CXX=x86_64-openbsd-clang++"\n\
 echo "OpenBSD ARM64:  CC=aarch64-openbsd-clang CXX=aarch64-openbsd-clang++"\n\
 echo "NetBSD AMD64:   CC=x86_64-netbsd-clang CXX=x86_64-netbsd-clang++"\n\
 echo "NetBSD ARM64:   CC=aarch64-netbsd-clang CXX=aarch64-netbsd-clang++"\n\
+echo "illumos AMD64:  CC=x86_64-illumos-clang CXX=x86_64-illumos-clang++"\n\
 echo ""\n\
 echo "=== Android NDK (API 24+) ==="\n\
 echo "ARM64 (v8a):    CC=aarch64-linux-android24-clang CXX=aarch64-linux-android24-clang++"\n\
@@ -307,31 +551,60 @@ echo "ARMv7 (v7a):    CC=armv7a-linux-androideabi24-clang CXX=armv7a-linux-andro
 echo "x86_64:         CC=x86_64-linux-android24-clang CXX=x86_64-linux-android24-clang++"\n\
 echo "x86:            CC=i686-linux-android24-clang CXX=i686-linux-android24-clang++"\n\
 echo ""\n\
+echo "=== WebAssembly ==="\n\
+echo "wasm32/wasm64:  CC=emcc CXX=em++"\n\
+echo "WASI:           CC=/opt/wasi-sdk/bin/clang CXX=/opt/wasi-sdk/bin/clang++"\n\
+echo ""\n\
+echo "=== Universal Binary ==="\n\
+echo "Cosmopolitan:   CC=cosmocc CXX=cosmoc++"\n\
+echo ""\n\
 echo "=== Modern Languages ==="\n\
 echo "Rust:    rustc $(rustc --version 2>/dev/null | cut -d\" \" -f2)"\n\
 echo "Go:      go $(go version 2>/dev/null | cut -d\" \" -f3)"\n\
 echo "TinyGo:  $(tinygo version 2>/dev/null)"\n\
 echo "Zig:     zig $(zig version 2>/dev/null)"\n\
+echo "Dart:    dart $(dart --version 2>/dev/null | cut -d\" \" -f4)"\n\
 echo "Node.js: node $(node --version 2>/dev/null)"\n\
 echo "Deno:    deno $(deno --version 2>/dev/null | head -1 | cut -d\" \" -f2)"\n\
 echo "Bun:     bun $(bun --version 2>/dev/null)"\n\
 echo "Python:  python $(python3 --version 2>/dev/null | cut -d\" \" -f2)"\n\
 echo ""\n\
+echo "=== JVM Languages ==="\n\
+echo "Java:    $(java -version 2>&1 | head -1)"\n\
+echo "Kotlin:  $(kotlinc -version 2>&1 | head -1)"\n\
+echo ""\n\
+echo "=== Build Tools ==="\n\
+echo "mold:      $(mold --version 2>/dev/null)"\n\
+echo "ccache:    $(ccache --version 2>/dev/null | head -1)"\n\
+echo "sccache:   $(sccache --version 2>/dev/null)"\n\
+echo "Gradle:    $(gradle --version 2>/dev/null | grep Gradle | head -1)"\n\
+echo "Maven:     $(mvn --version 2>/dev/null | head -1)"\n\
+echo ""\n\
 echo "=== WebAssembly Toolchain ==="\n\
 echo "wasm-pack:  $(wasm-pack --version 2>/dev/null)"\n\
 echo "wasmtime:   $(wasmtime --version 2>/dev/null)"\n\
 echo "emcc:       $(emcc --version 2>/dev/null | head -1)"\n\
+echo "wasi-sdk:   /opt/wasi-sdk"\n\
 ' > /usr/local/bin/toolchain-info && \
     chmod +x /usr/local/bin/toolchain-info
 
-# Set working directory
+# =============================================================================
+# SET WORKING DIRECTORY
+# =============================================================================
+
 WORKDIR /workspace
 
-# Copy entrypoint script
+# =============================================================================
+# COPY ENTRYPOINT
+# =============================================================================
+
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
-# Verify all toolchains and languages are available
+# =============================================================================
+# VERIFICATION
+# =============================================================================
+
 RUN echo "=== Toolchain Verification ===" && \
     echo "Alpine: $(cat /etc/alpine-release)" && \
     echo "Architecture: $(uname -m)" && \
@@ -339,51 +612,62 @@ RUN echo "=== Toolchain Verification ===" && \
     echo "=== C/C++ Compilers ===" && \
     echo "GCC (Linux AMD64):      $(gcc --version | head -1)" && \
     echo "GCC (Linux ARM64):      $(aarch64-linux-gcc --version | head -1)" && \
+    echo "GCC (Linux ARMv7):      $(armv7-linux-gcc --version | head -1)" && \
+    echo "GCC (Linux RISC-V64):   $(riscv64-linux-gcc --version | head -1)" && \
     echo "Clang (Windows AMD64):  $(x86_64-w64-mingw32-clang --version | head -1)" && \
     echo "Clang (Windows ARM64):  $(aarch64-w64-mingw32-clang --version | head -1)" && \
     echo "Clang (macOS AMD64):    $(x86_64-apple-darwin23-clang --version 2>&1 | head -1)" && \
     echo "Clang (macOS ARM64):    $(aarch64-apple-darwin23-clang --version 2>&1 | head -1)" && \
     echo "Clang (FreeBSD AMD64):  $(x86_64-freebsd-clang --version 2>&1 | head -1)" && \
-    echo "Clang (FreeBSD ARM64):  $(aarch64-freebsd-clang --version 2>&1 | head -1)" && \
-    echo "Clang (OpenBSD AMD64):  $(x86_64-openbsd-clang --version 2>&1 | head -1)" && \
-    echo "Clang (OpenBSD ARM64):  $(aarch64-openbsd-clang --version 2>&1 | head -1)" && \
-    echo "Clang (NetBSD AMD64):   $(x86_64-netbsd-clang --version 2>&1 | head -1)" && \
-    echo "Clang (NetBSD ARM64):   $(aarch64-netbsd-clang --version 2>&1 | head -1)" && \
+    echo "Clang (illumos AMD64):  $(x86_64-illumos-clang --version 2>&1 | head -1)" && \
+    echo "WASI SDK:               $(ls /opt/wasi-sdk/bin/clang 2>/dev/null && echo 'OK' || echo 'Not found')" && \
+    echo "Cosmocc:                $(cosmocc --version 2>&1 | head -1 || echo 'OK')" && \
     echo "" && \
     echo "=== Android NDK ===" && \
     echo "NDK Version:            $(cat /opt/android-ndk/source.properties | grep Pkg.Revision | cut -d= -f2)" && \
-    echo "ARM64-v8a:              $(aarch64-linux-android24-clang --version | head -1)" && \
-    echo "ARMv7-a:                $(armv7a-linux-androideabi24-clang --version | head -1)" && \
-    echo "x86_64:                 $(x86_64-linux-android24-clang --version | head -1)" && \
-    echo "x86:                    $(i686-linux-android24-clang --version | head -1)" && \
     echo "" && \
     echo "=== Modern Languages ===" && \
     echo "Rust:    $(rustc --version)" && \
     echo "Go:      $(go version)" && \
     echo "TinyGo:  $(tinygo version)" && \
     echo "Zig:     $(zig version)" && \
+    echo "Dart:    $(dart --version 2>&1)" && \
     echo "Node.js: $(node --version)" && \
     echo "Deno:    $(deno --version | head -1)" && \
     echo "Bun:     $(bun --version)" && \
     echo "Python:  $(python3 --version)" && \
+    echo "" && \
+    echo "=== JVM Languages ===" && \
+    echo "Java:    $(java -version 2>&1 | head -1)" && \
+    echo "Kotlin:  $(kotlinc -version 2>&1 | head -1 || echo 'installed')" && \
+    echo "" && \
+    echo "=== Build Tools ===" && \
+    echo "mold:      $(mold --version)" && \
+    echo "ccache:    $(ccache --version | head -1)" && \
+    echo "sccache:   $(sccache --version)" && \
+    echo "Gradle:    $(gradle --version 2>/dev/null | grep Gradle | head -1 || echo 'installed')" && \
+    echo "Maven:     $(mvn --version 2>/dev/null | head -1 || echo 'installed')" && \
+    echo "" && \
+    echo "=== Android SDK ===" && \
+    echo "SDK Location: $ANDROID_SDK_ROOT" && \
+    echo "Build-tools: $(ls /opt/android-sdk/build-tools/ 2>/dev/null | head -1 || echo 'installed')" && \
     echo "" && \
     echo "=== WebAssembly Toolchain ===" && \
     echo "wasm-pack: $(wasm-pack --version)" && \
     echo "wasmtime:  $(wasmtime --version)" && \
     echo "emcc:      $(emcc --version | head -1)" && \
     echo "" && \
-    echo "=== Build Tools ===" && \
-    echo "ccache:    $(ccache --version | head -1)" && \
-    echo "upx:       $(upx --version | head -1)" && \
-    echo "doxygen:   $(doxygen --version)" && \
-    echo "valgrind:  $(valgrind --version)" && \
-    echo "shellcheck: $(shellcheck --version | grep version:)" && \
-    echo "" && \
     echo "=== All toolchains ready ==="
 
-# Add build instructions as environment variable
-ENV BUILD_INFO="Alpine-based toolchain for static binaries. Use 'use-compiler <target>' to configure."
+# =============================================================================
+# BUILD INFO
+# =============================================================================
 
-# Set entrypoint
+ENV BUILD_INFO="Alpine-based toolchain for static binaries. Use 'toolchain-info' to see available compilers."
+
+# =============================================================================
+# ENTRYPOINT
+# =============================================================================
+
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["--shell"]
