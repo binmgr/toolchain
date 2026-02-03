@@ -164,7 +164,7 @@ RUN apk add --no-cache \
     harfbuzz-dev harfbuzz-static \
     # Networking
     curl-dev curl-static \
-    c-ares-dev c-ares-static \
+    c-ares-dev \
     nghttp2-dev nghttp2-static \
     libssh2-dev libssh2-static \
     # Database

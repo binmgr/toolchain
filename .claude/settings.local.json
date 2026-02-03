@@ -5,7 +5,8 @@
       "Bash(docker build:*)",
       "Bash(tee:*)",
       "Bash(docker images:*)",
-      "Bash(docker run:*)"
+      "Bash(docker run:*)",
+      "Bash(gh run:*)"
     ]
   }
 }
