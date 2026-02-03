@@ -6,7 +6,8 @@
       "Bash(tee:*)",
       "Bash(docker images:*)",
       "Bash(docker run:*)",
-      "Bash(gh run:*)"
+      "Bash(gh run:*)",
+      "Bash(./scripts/update-checksums.sh:*)"
     ]
   }
 }

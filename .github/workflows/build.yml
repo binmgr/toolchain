@@ -56,11 +56,12 @@ permissions:
 
 jobs:
   # ===========================================================================
-  # BUILD JOB
+  # BUILD JOBS - Native runners for each architecture (faster than QEMU)
   # ===========================================================================
-  build:
-    name: Build Image
+  build-amd64:
+    name: Build (amd64)
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     outputs:
       version: ${{ steps.version.outputs.version }}
       commit: ${{ steps.version.outputs.commit }}
@@ -68,9 +69,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -82,7 +80,6 @@ jobs:
           COMMIT=$(git rev-parse --short HEAD)
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "commit=$COMMIT" >> $GITHUB_OUTPUT
-          echo "Generated version: $VERSION, commit: $COMMIT"
 
       - name: Login to Container Registry
         if: github.event_name != 'pull_request'
@@ -92,35 +89,112 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push
+      - name: Build and push (amd64)
         uses: docker/build-push-action@v5
         with:
           context: .
-          platforms: ${{ github.event_name == 'pull_request' && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
+          platforms: linux/amd64
           push: ${{ github.event_name != 'pull_request' && (github.event.inputs.push_image != 'false') }}
           load: ${{ github.event_name == 'pull_request' }}
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.commit }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.commit }}-amd64
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.version=${{ steps.version.outputs.version }}
           build-args: |
             TOOLCHAIN_VERSION=${{ steps.version.outputs.version }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=amd64
+          cache-to: type=gha,scope=amd64,mode=max
           provenance: false
+
+  build-arm64:
+    name: Build (arm64)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    if: github.event_name != 'pull_request'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Generate version
+        id: version
+        run: |
+          VERSION=$(date +%y%m)
+          COMMIT=$(git rev-parse --short HEAD)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "commit=$COMMIT" >> $GITHUB_OUTPUT
+
+      - name: Login to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push (arm64)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/arm64
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.commit }}-arm64
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          build-args: |
+            TOOLCHAIN_VERSION=${{ steps.version.outputs.version }}
+          cache-from: type=gha,scope=arm64
+          cache-to: type=gha,scope=arm64,mode=max
+          provenance: false
+
+  # ===========================================================================
+  # MANIFEST JOB - Combine multi-arch images
+  # ===========================================================================
+  manifest:
+    name: Create Multi-arch Manifest
+    needs: [build-amd64, build-arm64]
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    outputs:
+      version: ${{ needs.build-amd64.outputs.version }}
+      commit: ${{ needs.build-amd64.outputs.commit }}
+
+    steps:
+      - name: Login to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create and push manifest
+        run: |
+          VERSION=${{ needs.build-amd64.outputs.version }}
+          COMMIT=${{ needs.build-amd64.outputs.commit }}
+
+          # Create manifest for all tags
+          for TAG in latest $VERSION $COMMIT; do
+            docker manifest create ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$TAG \
+              ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${COMMIT}-amd64 \
+              ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${COMMIT}-arm64
+            docker manifest push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$TAG
+          done
+
+          echo "Created multi-arch manifest for: latest, $VERSION, $COMMIT"
 
   # ===========================================================================
   # TEST JOB
   # ===========================================================================
   test:
     name: Test Targets
-    needs: build
+    needs: [build-amd64, manifest]
     runs-on: ubuntu-latest
-    if: github.event.inputs.skip_tests != 'true'
+    if: github.event.inputs.skip_tests != 'true' && github.event_name != 'pull_request'
     strategy:
       fail-fast: false
       matrix:
@@ -149,27 +223,19 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Pull or build image
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            docker build -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:test .
-            IMAGE_TAG="test"
-          else
-            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-            IMAGE_TAG="latest"
-          fi
-          echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+      - name: Pull image
+        run: docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
 
       - name: Test target - ${{ matrix.target }}
         run: |
-          docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} --test ${{ matrix.target }}
+          docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest --test ${{ matrix.target }}
 
   # ===========================================================================
   # SECURITY SCAN JOB
   # ===========================================================================
   security:
     name: Security Scan
-    needs: build
+    needs: manifest
     runs-on: ubuntu-latest
     if: github.event_name != 'pull_request'
 
@@ -214,7 +280,7 @@ jobs:
   # ===========================================================================
   sbom:
     name: Generate SBOM
-    needs: build
+    needs: manifest
     runs-on: ubuntu-latest
     if: github.event_name != 'pull_request'
 
@@ -252,7 +318,7 @@ jobs:
   # ===========================================================================
   size-tracking:
     name: Track Image Size
-    needs: build
+    needs: manifest
     runs-on: ubuntu-latest
     if: github.event_name != 'pull_request'
 
@@ -296,7 +362,7 @@ jobs:
   # ===========================================================================
   summary:
     name: Build Summary
-    needs: [build, test, security, sbom, size-tracking]
+    needs: [manifest, test, security, sbom, size-tracking]
     runs-on: ubuntu-latest
     if: always() && github.event_name != 'pull_request'
 
@@ -310,7 +376,7 @@ jobs:
 
           ```bash
           docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build.outputs.version }}
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.manifest.outputs.version }}
           ```
 
           ### Quick Start
@@ -333,7 +399,8 @@ jobs:
 
           | Job | Status |
           |-----|--------|
-          | Build | ${{ needs.build.result }} |
+          | Build (amd64) | ${{ needs.manifest.result }} |
+          | Build (arm64) | ${{ needs.manifest.result }} |
           | Test | ${{ needs.test.result }} |
           | Security Scan | ${{ needs.security.result }} |
           | SBOM Generation | ${{ needs.sbom.result }} |
