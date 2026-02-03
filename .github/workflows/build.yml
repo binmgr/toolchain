@@ -78,8 +78,10 @@ jobs:
         run: |
           VERSION=$(date +%y%m)
           COMMIT=$(git rev-parse --short HEAD)
+          CREATED=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "commit=$COMMIT" >> $GITHUB_OUTPUT
+          echo "created=$CREATED" >> $GITHUB_OUTPUT
 
       - name: Login to Container Registry
         if: github.event_name != 'pull_request'
@@ -101,6 +103,8 @@ jobs:
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
+            org.opencontainers.image.created=${{ steps.version.outputs.created }}
           build-args: |
             TOOLCHAIN_VERSION=${{ steps.version.outputs.version }}
           cache-from: type=gha,scope=amd64
@@ -125,8 +129,10 @@ jobs:
         run: |
           VERSION=$(date +%y%m)
           COMMIT=$(git rev-parse --short HEAD)
+          CREATED=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "commit=$COMMIT" >> $GITHUB_OUTPUT
+          echo "created=$CREATED" >> $GITHUB_OUTPUT
 
       - name: Login to Container Registry
         uses: docker/login-action@v3
@@ -146,6 +152,8 @@ jobs:
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
+            org.opencontainers.image.created=${{ steps.version.outputs.created }}
           build-args: |
             TOOLCHAIN_VERSION=${{ steps.version.outputs.version }}
           cache-from: type=gha,scope=arm64
@@ -172,20 +180,40 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create and push manifest
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Create and push manifest with annotations
         run: |
           VERSION=${{ needs.build-amd64.outputs.version }}
           COMMIT=${{ needs.build-amd64.outputs.commit }}
+          CREATED=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-          # Create manifest for all tags
+          # OCI annotations for multi-arch manifest index
+          ANNOTATIONS=(
+            --annotation "index:org.opencontainers.image.title=binmgr/toolchain"
+            --annotation "index:org.opencontainers.image.description=Ultimate cross-compilation toolchain for static binaries across 20+ platforms"
+            --annotation "index:org.opencontainers.image.authors=binmgr"
+            --annotation "index:org.opencontainers.image.vendor=binmgr"
+            --annotation "index:org.opencontainers.image.licenses=MIT"
+            --annotation "index:org.opencontainers.image.url=https://github.com/binmgr/toolchain"
+            --annotation "index:org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}"
+            --annotation "index:org.opencontainers.image.documentation=https://github.com/binmgr/toolchain/blob/main/README.md"
+            --annotation "index:org.opencontainers.image.version=${VERSION}"
+            --annotation "index:org.opencontainers.image.revision=${{ github.sha }}"
+            --annotation "index:org.opencontainers.image.created=${CREATED}"
+          )
+
+          # Create manifest for all tags using buildx imagetools (supports annotations)
           for TAG in latest $VERSION $COMMIT; do
-            docker manifest create ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$TAG \
+            docker buildx imagetools create \
+              "${ANNOTATIONS[@]}" \
+              --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$TAG \
               ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${COMMIT}-amd64 \
               ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${COMMIT}-arm64
-            docker manifest push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$TAG
           done
 
-          echo "Created multi-arch manifest for: latest, $VERSION, $COMMIT"
+          echo "Created multi-arch manifest with OCI annotations for: latest, $VERSION, $COMMIT"
 
   # ===========================================================================
   # TEST JOB

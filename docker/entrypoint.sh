@@ -526,9 +526,9 @@ list_targets() {
     echo "  linux-armv7        ARMv7 32-bit with musl libc"
     echo "  linux-riscv64      RISC-V 64-bit with musl libc"
     echo ""
-    echo -e "${GREEN}Windows (MinGW):${NC}"
-    echo "  windows-amd64      x86_64 Windows (LLVM MinGW)"
-    echo "  windows-arm64      ARM64 Windows (LLVM MinGW)"
+    echo -e "${GREEN}Windows (MinGW-w64 GCC):${NC}"
+    echo "  windows-amd64      x86_64 Windows (MinGW-w64 GCC)"
+    echo "  windows-arm64      ARM64 Windows (not supported - uses AMD64)"
     echo ""
     echo -e "${GREEN}macOS (OSXCross):${NC}"
     echo "  darwin-amd64       x86_64 macOS (Darwin 23)"
@@ -631,25 +631,28 @@ setup_target() {
             export CFLAGS="${CFLAGS:--O2} -static"
             ;;
         # =====================================================================
-        # WINDOWS TARGETS
+        # WINDOWS TARGETS (Alpine's native MinGW-w64 GCC)
         # =====================================================================
         windows-amd64)
-            export CC=x86_64-w64-mingw32-clang
-            export CXX=x86_64-w64-mingw32-clang++
+            export CC=x86_64-w64-mingw32-gcc
+            export CXX=x86_64-w64-mingw32-g++
             export AR=x86_64-w64-mingw32-ar
             export RANLIB=x86_64-w64-mingw32-ranlib
             export STRIP=x86_64-w64-mingw32-strip
-            export PKG_CONFIG_PATH="/opt/llvm-mingw/x86_64-w64-mingw32/lib/pkgconfig"
+            export PKG_CONFIG_PATH="/usr/x86_64-w64-mingw32/lib/pkgconfig"
             export LDFLAGS="-static"
             export CFLAGS="${CFLAGS:--O2} -static"
             ;;
         windows-arm64)
-            export CC=aarch64-w64-mingw32-clang
-            export CXX=aarch64-w64-mingw32-clang++
-            export AR=aarch64-w64-mingw32-ar
-            export RANLIB=aarch64-w64-mingw32-ranlib
-            export STRIP=aarch64-w64-mingw32-strip
-            export PKG_CONFIG_PATH="/opt/llvm-mingw/aarch64-w64-mingw32/lib/pkgconfig"
+            # ARM64 Windows cross-compilation not supported with Alpine's MinGW
+            # Fall back to x86_64 Windows
+            print_warning "ARM64 Windows not supported - using AMD64 instead"
+            export CC=x86_64-w64-mingw32-gcc
+            export CXX=x86_64-w64-mingw32-g++
+            export AR=x86_64-w64-mingw32-ar
+            export RANLIB=x86_64-w64-mingw32-ranlib
+            export STRIP=x86_64-w64-mingw32-strip
+            export PKG_CONFIG_PATH="/usr/x86_64-w64-mingw32/lib/pkgconfig"
             export LDFLAGS="-static"
             export CFLAGS="${CFLAGS:--O2} -static"
             ;;
@@ -792,12 +795,13 @@ setup_target() {
             # Emscripten has its own pkg-config handling
             ;;
         wasi)
-            export CC="/opt/wasi-sdk/bin/clang --sysroot=/opt/wasi-sdk/share/wasi-sysroot"
-            export CXX="/opt/wasi-sdk/bin/clang++ --sysroot=/opt/wasi-sdk/share/wasi-sysroot"
-            export AR=/opt/wasi-sdk/bin/llvm-ar
-            export RANLIB=/opt/wasi-sdk/bin/llvm-ranlib
-            export STRIP=/opt/wasi-sdk/bin/llvm-strip
-            export WASI_SDK_PATH=/opt/wasi-sdk
+            # Alpine's native wasi-sdk package (requires lld linker)
+            export CC="clang --target=wasm32-wasi --sysroot=/usr/share/wasi-sysroot -fuse-ld=lld"
+            export CXX="clang++ --target=wasm32-wasi --sysroot=/usr/share/wasi-sysroot -fuse-ld=lld"
+            export AR=llvm-ar
+            export RANLIB=llvm-ranlib
+            export STRIP=llvm-strip
+            export WASI_SDK_PATH=/usr/share/wasi-sysroot
             ;;
         # =====================================================================
         # COSMOPOLITAN (UNIVERSAL BINARY)

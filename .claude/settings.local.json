@@ -7,7 +7,8 @@
       "Bash(docker images:*)",
       "Bash(docker run:*)",
       "Bash(gh run:*)",
-      "Bash(./scripts/update-checksums.sh:*)"
+      "Bash(./scripts/update-checksums.sh:*)",
+      "Bash(act:*)"
     ]
   }
 }

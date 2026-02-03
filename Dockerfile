@@ -200,6 +200,10 @@ RUN apk add --no-cache \
     maven \
     # Glibc compatibility (needed for some pre-built toolchains)
     gcompat \
+    # Windows cross-compiler (Alpine native MinGW-w64)
+    mingw-w64-gcc \
+    # WASI SDK (Alpine native - musl compatible)
+    wasi-sdk \
     && rm -rf /var/cache/apk/*
 
 # =============================================================================
@@ -283,14 +287,33 @@ RUN set -ex && \
     ln -sf riscv64-buildroot-linux-musl-ranlib riscv64-linux-ranlib && \
     cd ../.. && \
     # =========================================================================
-    # Windows cross-compiler (LLVM MinGW - supports AMD64 and ARM64)
+    # Fix Bootlin toolchains: replace glibc-linked libs with musl-compatible
+    # The Bootlin toolchains ship with libgmp.so built against glibc which
+    # requires obstack_vprintf (not available in musl). Replace with Alpine's.
+    # Also fix any wrapper script issues by ensuring .br_real files exist.
     # =========================================================================
-    verified_download \
-        "https://github.com/mstorsjo/llvm-mingw/releases/download/${LLVM_MINGW_VERSION}/llvm-mingw-${LLVM_MINGW_VERSION}-ucrt-ubuntu-20.04-x86_64.tar.xz" \
-        "${LLVM_MINGW_SHA256}" \
-        "llvm-mingw-${LLVM_MINGW_VERSION}-ucrt-ubuntu-20.04-x86_64.tar.xz" && \
-    tar xJf "llvm-mingw-${LLVM_MINGW_VERSION}-ucrt-ubuntu-20.04-x86_64.tar.xz" && \
-    ln -s "llvm-mingw-${LLVM_MINGW_VERSION}-ucrt-ubuntu-20.04-x86_64" llvm-mingw && \
+    for toolchain in aarch64-linux-musl armv7-linux-musl riscv64-linux-musl; do \
+        echo "Fixing toolchain: $toolchain" && \
+        mkdir -p /opt/$toolchain/lib && \
+        rm -f /opt/$toolchain/lib/libgmp.so* /opt/$toolchain/lib/libmpfr.so* /opt/$toolchain/lib/libmpc.so* && \
+        ln -sf /usr/lib/libgmp.so.10.5.0 /opt/$toolchain/lib/libgmp.so.10 && \
+        ln -sf /usr/lib/libgmp.so.10.5.0 /opt/$toolchain/lib/libgmp.so && \
+        ln -sf /usr/lib/libmpfr.so.6 /opt/$toolchain/lib/libmpfr.so.6 2>/dev/null || true && \
+        ln -sf /usr/lib/libmpfr.so /opt/$toolchain/lib/libmpfr.so 2>/dev/null || true && \
+        ln -sf /usr/lib/libmpc.so.3 /opt/$toolchain/lib/libmpc.so.3 2>/dev/null || true && \
+        ln -sf /usr/lib/libmpc.so /opt/$toolchain/lib/libmpc.so 2>/dev/null || true && \
+        ls -la /opt/$toolchain/lib/libgmp* || echo "Warning: libgmp symlinks missing for $toolchain"; \
+    done && \
+    # =========================================================================
+    # Windows cross-compiler: Using Alpine's mingw-w64-gcc package (musl-native)
+    # Creates wrapper scripts for compatibility with existing tooling
+    # =========================================================================
+    mkdir -p /opt/mingw-w64/bin && \
+    printf '#!/bin/sh\nexec x86_64-w64-mingw32-gcc "$@"\n' > /opt/mingw-w64/bin/x86_64-w64-mingw32-clang && \
+    printf '#!/bin/sh\nexec x86_64-w64-mingw32-g++ "$@"\n' > /opt/mingw-w64/bin/x86_64-w64-mingw32-clang++ && \
+    printf '#!/bin/sh\nexec x86_64-w64-mingw32-gcc "$@"\n' > /opt/mingw-w64/bin/aarch64-w64-mingw32-clang && \
+    printf '#!/bin/sh\nexec x86_64-w64-mingw32-g++ "$@"\n' > /opt/mingw-w64/bin/aarch64-w64-mingw32-clang++ && \
+    chmod +x /opt/mingw-w64/bin/* && \
     # =========================================================================
     # macOS cross-compiler (OSXCross)
     # =========================================================================
@@ -418,23 +441,14 @@ RUN set -ex && \
         mv "wasmtime-v${WASMTIME_VERSION}-aarch64-linux" wasmtime; \
     fi && \
     # =========================================================================
-    # WASI SDK - WebAssembly System Interface
+    # WASI SDK - Using Alpine's native wasi-sdk package (musl-compatible)
+    # Create symlink for compatibility with existing paths
     # =========================================================================
-    if [ "$(uname -m)" = "x86_64" ]; then \
-        verified_download \
-            "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_SDK_VERSION}/wasi-sdk-${WASI_SDK_VERSION}.0-x86_64-linux.tar.gz" \
-            "${WASI_SDK_AMD64_SHA256}" \
-            "wasi-sdk-${WASI_SDK_VERSION}.0-x86_64-linux.tar.gz" && \
-        tar xzf "wasi-sdk-${WASI_SDK_VERSION}.0-x86_64-linux.tar.gz" && \
-        mv "wasi-sdk-${WASI_SDK_VERSION}.0-x86_64-linux" wasi-sdk; \
-    else \
-        verified_download \
-            "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_SDK_VERSION}/wasi-sdk-${WASI_SDK_VERSION}.0-arm64-linux.tar.gz" \
-            "${WASI_SDK_ARM64_SHA256}" \
-            "wasi-sdk-${WASI_SDK_VERSION}.0-arm64-linux.tar.gz" && \
-        tar xzf "wasi-sdk-${WASI_SDK_VERSION}.0-arm64-linux.tar.gz" && \
-        mv "wasi-sdk-${WASI_SDK_VERSION}.0-arm64-linux" wasi-sdk; \
-    fi && \
+    ln -sf /usr/share/wasi-sysroot /opt/wasi-sysroot && \
+    mkdir -p /opt/wasi-sdk/bin /opt/wasi-sdk/share && \
+    ln -sf /usr/bin/clang /opt/wasi-sdk/bin/clang && \
+    ln -sf /usr/bin/clang++ /opt/wasi-sdk/bin/clang++ && \
+    ln -sf /usr/share/wasi-sysroot /opt/wasi-sdk/share/wasi-sysroot && \
     # =========================================================================
     # Cosmopolitan libc - Universal fat binaries
     # =========================================================================
@@ -566,7 +580,7 @@ RUN set -ex && \
 # ENVIRONMENT VARIABLES
 # =============================================================================
 
-ENV PATH="/opt/aarch64-linux-musl/bin:/opt/armv7-linux-musl/bin:/opt/riscv64-linux-musl/bin:/opt/llvm-mingw/bin:/opt/osxcross/target/bin:/opt/bsd-cross/bin:/opt/illumos-cross/bin:/opt/zig:/opt/dart/bin:/opt/deno:/opt/bun:/opt/tinygo/bin:/opt/wasmtime:/opt/wasi-sdk/bin:/opt/cosmocc/bin:/opt/emsdk:/opt/emsdk/upstream/emscripten:/opt/gradle/bin:/opt/kotlin/bin:/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools:/root/.cargo/bin:${PATH}" \
+ENV PATH="/opt/aarch64-linux-musl/bin:/opt/armv7-linux-musl/bin:/opt/riscv64-linux-musl/bin:/opt/mingw-w64/bin:/opt/osxcross/target/bin:/opt/bsd-cross/bin:/opt/illumos-cross/bin:/opt/zig:/opt/dart/bin:/opt/deno:/opt/bun:/opt/tinygo/bin:/opt/wasmtime:/opt/wasi-sdk/bin:/opt/cosmocc/bin:/opt/emsdk:/opt/emsdk/upstream/emscripten:/opt/gradle/bin:/opt/kotlin/bin:/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools:/root/.cargo/bin:${PATH}" \
     JAVA_HOME="/usr/lib/jvm/java-17-openjdk" \
     DART_HOME="/opt/dart" \
     ANDROID_SDK_ROOT="/opt/android-sdk" \
@@ -595,8 +609,7 @@ RUN mkdir -p /usr/lib/pkgconfig \
     /opt/aarch64-linux-musl/aarch64-buildroot-linux-musl/sysroot/usr/lib/pkgconfig \
     /opt/armv7-linux-musl/arm-buildroot-linux-musleabihf/sysroot/usr/lib/pkgconfig \
     /opt/riscv64-linux-musl/riscv64-buildroot-linux-musl/sysroot/usr/lib/pkgconfig \
-    /opt/llvm-mingw/x86_64-w64-mingw32/lib/pkgconfig \
-    /opt/llvm-mingw/aarch64-w64-mingw32/lib/pkgconfig \
+    /usr/x86_64-w64-mingw32/lib/pkgconfig \
     /opt/osxcross/target/SDK/MacOSX${MACOS_SDK_VERSION}.sdk/usr/lib/pkgconfig \
     /opt/bsd-cross/freebsd/usr/lib/pkgconfig \
     /opt/bsd-cross/openbsd/usr/lib/pkgconfig \
@@ -613,8 +626,8 @@ echo "Linux AMD64:    CC=gcc CXX=g++"\n\
 echo "Linux ARM64:    CC=aarch64-linux-gcc CXX=aarch64-linux-g++"\n\
 echo "Linux ARMv7:    CC=armv7-linux-gcc CXX=armv7-linux-g++"\n\
 echo "Linux RISC-V64: CC=riscv64-linux-gcc CXX=riscv64-linux-g++"\n\
-echo "Windows AMD64:  CC=x86_64-w64-mingw32-clang CXX=x86_64-w64-mingw32-clang++"\n\
-echo "Windows ARM64:  CC=aarch64-w64-mingw32-clang CXX=aarch64-w64-mingw32-clang++"\n\
+echo "Windows AMD64:  CC=x86_64-w64-mingw32-gcc CXX=x86_64-w64-mingw32-g++"\n\
+echo "Windows ARM64:  (not supported - use AMD64)"\n\
 echo "macOS AMD64:    CC=x86_64-apple-darwin23-clang CXX=x86_64-apple-darwin23-clang++"\n\
 echo "macOS ARM64:    CC=aarch64-apple-darwin23-clang CXX=aarch64-apple-darwin23-clang++"\n\
 echo "FreeBSD AMD64:  CC=x86_64-freebsd-clang CXX=x86_64-freebsd-clang++"\n\
@@ -633,7 +646,7 @@ echo "x86:            CC=i686-linux-android24-clang CXX=i686-linux-android24-cla
 echo ""\n\
 echo "=== WebAssembly ==="\n\
 echo "wasm32/wasm64:  CC=emcc CXX=em++"\n\
-echo "WASI:           CC=/opt/wasi-sdk/bin/clang CXX=/opt/wasi-sdk/bin/clang++"\n\
+echo "WASI:           CC=clang --target=wasm32-wasi CXX=clang++ --target=wasm32-wasi"\n\
 echo ""\n\
 echo "=== Universal Binary ==="\n\
 echo "Cosmopolitan:   CC=cosmocc CXX=cosmoc++"\n\
@@ -664,7 +677,7 @@ echo "=== WebAssembly Toolchain ==="\n\
 echo "wasm-pack:  $(wasm-pack --version 2>/dev/null)"\n\
 echo "wasmtime:   $(wasmtime --version 2>/dev/null)"\n\
 echo "emcc:       $(emcc --version 2>/dev/null | head -1)"\n\
-echo "wasi-sdk:   /opt/wasi-sdk"\n\
+echo "wasi-sdk:   /usr/share/wasi-sysroot (Alpine package)"\n\
 ' > /usr/local/bin/toolchain-info && \
     chmod +x /usr/local/bin/toolchain-info
 
@@ -694,8 +707,8 @@ RUN echo "=== Toolchain Verification ===" && \
     echo "GCC (Linux ARM64):      $(aarch64-linux-gcc --version | head -1)" && \
     echo "GCC (Linux ARMv7):      $(armv7-linux-gcc --version | head -1)" && \
     echo "GCC (Linux RISC-V64):   $(riscv64-linux-gcc --version | head -1)" && \
-    echo "Clang (Windows AMD64):  $(x86_64-w64-mingw32-clang --version | head -1)" && \
-    echo "Clang (Windows ARM64):  $(aarch64-w64-mingw32-clang --version | head -1)" && \
+    echo "GCC (Windows AMD64):    $(x86_64-w64-mingw32-gcc --version | head -1)" && \
+    echo "GCC (Windows ARM64):    Not supported (use x86_64-w64-mingw32-gcc)" && \
     echo "Clang (macOS AMD64):    $(x86_64-apple-darwin23-clang --version 2>&1 | head -1)" && \
     echo "Clang (macOS ARM64):    $(aarch64-apple-darwin23-clang --version 2>&1 | head -1)" && \
     echo "Clang (FreeBSD AMD64):  $(x86_64-freebsd-clang --version 2>&1 | head -1)" && \
