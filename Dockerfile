@@ -200,11 +200,15 @@ RUN apk add --no-cache \
     maven \
     # Glibc compatibility (needed for some pre-built toolchains)
     gcompat \
-    # Windows cross-compiler (Alpine native MinGW-w64)
-    mingw-w64-gcc \
     # WASI SDK (Alpine native - musl compatible)
     wasi-sdk \
     && rm -rf /var/cache/apk/*
+
+# Install architecture-specific packages
+# mingw-w64-gcc is only available for x86_64
+RUN if [ "$(uname -m)" = "x86_64" ]; then \
+        apk add --no-cache mingw-w64-gcc; \
+    fi
 
 # =============================================================================
 # STAGE 2: Download and install cross-compilers
