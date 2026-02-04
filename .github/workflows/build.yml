@@ -61,7 +61,7 @@ jobs:
   build-amd64:
     name: Build (amd64)
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
     outputs:
       version: ${{ steps.version.outputs.version }}
       commit: ${{ steps.version.outputs.commit }}
@@ -114,7 +114,7 @@ jobs:
   build-arm64:
     name: Build (arm64)
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 90
+    timeout-minutes: 120
     if: github.event_name != 'pull_request'
 
     steps:
