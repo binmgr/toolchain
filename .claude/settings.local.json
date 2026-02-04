@@ -8,7 +8,9 @@
       "Bash(docker run:*)",
       "Bash(gh run:*)",
       "Bash(./scripts/update-checksums.sh:*)",
-      "Bash(act:*)"
+      "Bash(act:*)",
+      "Bash(for tool in gcc g++ ar)",
+      "Bash(done)"
     ]
   }
 }

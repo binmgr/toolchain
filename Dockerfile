@@ -252,11 +252,10 @@ RUN set -ex && \
     tar xjf "aarch64--musl--stable-${BOOTLIN_VERSION}.tar.bz2" && \
     mv "aarch64--musl--stable-${BOOTLIN_VERSION}" aarch64-linux-musl && \
     cd aarch64-linux-musl/bin && \
-    ln -sf aarch64-buildroot-linux-musl-gcc aarch64-linux-gcc && \
-    ln -sf aarch64-buildroot-linux-musl-g++ aarch64-linux-g++ && \
-    ln -sf aarch64-buildroot-linux-musl-ar aarch64-linux-ar && \
-    ln -sf aarch64-buildroot-linux-musl-strip aarch64-linux-strip && \
-    ln -sf aarch64-buildroot-linux-musl-ranlib aarch64-linux-ranlib && \
+    for tool in gcc g++ ar strip ranlib; do \
+        printf '#!/bin/sh\nexec /opt/aarch64-linux-musl/bin/aarch64-buildroot-linux-musl-'$tool' "$@"\n' > aarch64-linux-$tool && \
+        chmod +x aarch64-linux-$tool; \
+    done && \
     cd ../.. && \
     # =========================================================================
     # ARMv7 Linux cross-compiler (Bootlin musl toolchain)
@@ -268,11 +267,10 @@ RUN set -ex && \
     tar xjf "armv7-eabihf--musl--stable-${BOOTLIN_VERSION}.tar.bz2" && \
     mv "armv7-eabihf--musl--stable-${BOOTLIN_VERSION}" armv7-linux-musl && \
     cd armv7-linux-musl/bin && \
-    ln -sf arm-buildroot-linux-musleabihf-gcc armv7-linux-gcc && \
-    ln -sf arm-buildroot-linux-musleabihf-g++ armv7-linux-g++ && \
-    ln -sf arm-buildroot-linux-musleabihf-ar armv7-linux-ar && \
-    ln -sf arm-buildroot-linux-musleabihf-strip armv7-linux-strip && \
-    ln -sf arm-buildroot-linux-musleabihf-ranlib armv7-linux-ranlib && \
+    for tool in gcc g++ ar strip ranlib; do \
+        printf '#!/bin/sh\nexec /opt/armv7-linux-musl/bin/arm-buildroot-linux-musleabihf-'$tool' "$@"\n' > armv7-linux-$tool && \
+        chmod +x armv7-linux-$tool; \
+    done && \
     cd ../.. && \
     # =========================================================================
     # RISC-V 64-bit Linux cross-compiler (Bootlin musl toolchain)
@@ -284,11 +282,10 @@ RUN set -ex && \
     tar xjf "riscv64-lp64d--musl--stable-${BOOTLIN_VERSION}.tar.bz2" && \
     mv "riscv64-lp64d--musl--stable-${BOOTLIN_VERSION}" riscv64-linux-musl && \
     cd riscv64-linux-musl/bin && \
-    ln -sf riscv64-buildroot-linux-musl-gcc riscv64-linux-gcc && \
-    ln -sf riscv64-buildroot-linux-musl-g++ riscv64-linux-g++ && \
-    ln -sf riscv64-buildroot-linux-musl-ar riscv64-linux-ar && \
-    ln -sf riscv64-buildroot-linux-musl-strip riscv64-linux-strip && \
-    ln -sf riscv64-buildroot-linux-musl-ranlib riscv64-linux-ranlib && \
+    for tool in gcc g++ ar strip ranlib; do \
+        printf '#!/bin/sh\nexec /opt/riscv64-linux-musl/bin/riscv64-buildroot-linux-musl-'$tool' "$@"\n' > riscv64-linux-$tool && \
+        chmod +x riscv64-linux-$tool; \
+    done && \
     cd ../.. && \
     # =========================================================================
     # Fix Bootlin toolchains: replace glibc-linked libs with musl-compatible
@@ -577,8 +574,9 @@ RUN set -ex && \
     rm -f *.tar.* *.zip *.tar.bz2 *.tar.xz *.tar.gz && \
     rm -rf */share/doc */share/man */share/info */share/gtk-doc 2>/dev/null || true && \
     rm -rf */share/locale 2>/dev/null || true && \
-    find . -type f -name "*.o" -delete 2>/dev/null || true && \
-    find . -type d \( -name "test" -o -name "tests" -o -name "examples" \) -exec rm -rf {} + 2>/dev/null || true
+    find . -path "*/share/doc/*.o" -delete 2>/dev/null || true && \
+    find . -type d \( -name "test" -o -name "tests" -o -name "examples" \) \
+        -not -path "*/sysroot/*" -not -path "*/cosmocc/*" -exec rm -rf {} + 2>/dev/null || true
 
 # =============================================================================
 # ENVIRONMENT VARIABLES
@@ -711,8 +709,7 @@ RUN echo "=== Toolchain Verification ===" && \
     echo "GCC (Linux ARM64):      $(aarch64-linux-gcc --version | head -1)" && \
     echo "GCC (Linux ARMv7):      $(armv7-linux-gcc --version | head -1)" && \
     echo "GCC (Linux RISC-V64):   $(riscv64-linux-gcc --version | head -1)" && \
-    echo "GCC (Windows AMD64):    $(x86_64-w64-mingw32-gcc --version | head -1)" && \
-    echo "GCC (Windows ARM64):    Not supported (use x86_64-w64-mingw32-gcc)" && \
+    echo "GCC (Windows AMD64):    $(x86_64-w64-mingw32-gcc --version 2>/dev/null | head -1 || echo 'Not available (arm64 host)')" && \
     echo "Clang (macOS AMD64):    $(x86_64-apple-darwin23-clang --version 2>&1 | head -1)" && \
     echo "Clang (macOS ARM64):    $(aarch64-apple-darwin23-clang --version 2>&1 | head -1)" && \
     echo "Clang (FreeBSD AMD64):  $(x86_64-freebsd-clang --version 2>&1 | head -1)" && \
