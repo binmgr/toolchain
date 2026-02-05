@@ -10,7 +10,10 @@
       "Bash(./scripts/update-checksums.sh:*)",
       "Bash(act:*)",
       "Bash(for tool in gcc g++ ar)",
-      "Bash(done)"
+      "Bash(done)",
+      "Bash(gh release list:*)",
+      "WebFetch(domain:android.googlesource.com)",
+      "Bash(gh release view:*)"
     ]
   }
 }

@@ -56,6 +56,7 @@ ARG WASMTIME_VERSION=27.0.0
 ARG WASI_SDK_VERSION=24
 ARG COSMO_VERSION=3.9.2
 ARG SCCACHE_VERSION=0.8.2
+ARG WASM_PACK_VERSION=0.14.0
 
 # Android/Kotlin/Java build tools
 ARG GRADLE_VERSION=8.12
@@ -492,10 +493,25 @@ RUN set -ex && \
     ./emsdk activate latest && \
     cd .. && \
     # =========================================================================
-    # Install wasm-pack via cargo
-    # Note: Cargo verifies package integrity via crates.io checksums
+    # wasm-pack - Rust/WASM packaging tool (pre-built binary)
     # =========================================================================
-    cargo install wasm-pack && \
+    if [ "$(uname -m)" = "x86_64" ]; then \
+        verified_download \
+            "https://github.com/drager/wasm-pack/releases/download/v${WASM_PACK_VERSION}/wasm-pack-v${WASM_PACK_VERSION}-x86_64-unknown-linux-musl.tar.gz" \
+            "SKIP" \
+            "wasm-pack.tar.gz" && \
+        tar xzf wasm-pack.tar.gz && \
+        mv wasm-pack-v${WASM_PACK_VERSION}-x86_64-unknown-linux-musl/wasm-pack /usr/local/bin/ && \
+        rm -rf wasm-pack-v${WASM_PACK_VERSION}-x86_64-unknown-linux-musl wasm-pack.tar.gz; \
+    else \
+        verified_download \
+            "https://github.com/drager/wasm-pack/releases/download/v${WASM_PACK_VERSION}/wasm-pack-v${WASM_PACK_VERSION}-aarch64-unknown-linux-musl.tar.gz" \
+            "SKIP" \
+            "wasm-pack.tar.gz" && \
+        tar xzf wasm-pack.tar.gz && \
+        mv wasm-pack-v${WASM_PACK_VERSION}-aarch64-unknown-linux-musl/wasm-pack /usr/local/bin/ && \
+        rm -rf wasm-pack-v${WASM_PACK_VERSION}-aarch64-unknown-linux-musl wasm-pack.tar.gz; \
+    fi && \
     # =========================================================================
     # Gradle build system
     # =========================================================================
@@ -571,12 +587,22 @@ RUN set -ex && \
     # =========================================================================
     # Cleanup
     # =========================================================================
-    rm -f *.tar.* *.zip *.tar.bz2 *.tar.xz *.tar.gz && \
+    rm -f *.tar.* *.zip *.txz && \
     rm -rf */share/doc */share/man */share/info */share/gtk-doc 2>/dev/null || true && \
     rm -rf */share/locale 2>/dev/null || true && \
     find . -path "*/share/doc/*.o" -delete 2>/dev/null || true && \
     find . -type d \( -name "test" -o -name "tests" -o -name "examples" \) \
-        -not -path "*/sysroot/*" -not -path "*/cosmocc/*" -exec rm -rf {} + 2>/dev/null || true
+        -not -path "*/sysroot/*" -not -path "*/cosmocc/*" -exec rm -rf {} + 2>/dev/null || true && \
+    # Clean emsdk git history
+    rm -rf /opt/emsdk/.git /opt/emsdk/.github 2>/dev/null || true && \
+    # Clean Android NDK non-essential components
+    rm -rf /opt/android-ndk/simpleperf /opt/android-ndk/shader-tools 2>/dev/null || true && \
+    rm -f /opt/android-ndk/CHANGELOG.md /opt/android-ndk/README.md 2>/dev/null || true && \
+    # Clean cargo build cache
+    rm -rf /root/.cargo/registry /root/.cargo/git /root/.cargo/.package-cache 2>/dev/null || true && \
+    # Clean Python and build caches
+    find / -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true && \
+    rm -rf /root/.cache/pip /root/.cache/go-build /tmp/* 2>/dev/null || true
 
 # =============================================================================
 # ENVIRONMENT VARIABLES
