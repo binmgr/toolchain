@@ -108,7 +108,7 @@ jobs:
           build-args: |
             TOOLCHAIN_VERSION=${{ steps.version.outputs.version }}
           cache-from: type=gha,scope=amd64
-          cache-to: type=gha,scope=amd64,mode=max
+          cache-to: type=gha,scope=amd64,mode=min
           provenance: false
 
   build-arm64:
@@ -157,7 +157,7 @@ jobs:
           build-args: |
             TOOLCHAIN_VERSION=${{ steps.version.outputs.version }}
           cache-from: type=gha,scope=arm64
-          cache-to: type=gha,scope=arm64,mode=max
+          cache-to: type=gha,scope=arm64,mode=min
           provenance: false
 
   # ===========================================================================
