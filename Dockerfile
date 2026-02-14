@@ -303,7 +303,8 @@ RUN set -ex && \
         mv "aarch64--musl--stable-${BOOTLIN_VERSION}" aarch64-linux-musl && \
         cd aarch64-linux-musl/bin && \
         for tool in gcc g++ ar strip ranlib; do \
-            printf '#!/bin/sh\nexec /opt/aarch64-linux-musl/bin/aarch64-buildroot-linux-musl-'$tool' "$@"\n' > aarch64-linux-$tool && \
+            rm -f aarch64-linux-$tool && \
+            printf '#!/bin/sh\nexec /opt/aarch64-linux-musl/bin/aarch64-buildroot-linux-musl-'$tool'.br_real "$@"\n' > aarch64-linux-$tool && \
             chmod +x aarch64-linux-$tool; \
         done && \
         cd ../.. && \
@@ -311,7 +312,8 @@ RUN set -ex && \
         mv "armv7-eabihf--musl--stable-${BOOTLIN_VERSION}" armv7-linux-musl && \
         cd armv7-linux-musl/bin && \
         for tool in gcc g++ ar strip ranlib; do \
-            printf '#!/bin/sh\nexec /opt/armv7-linux-musl/bin/arm-buildroot-linux-musleabihf-'$tool' "$@"\n' > armv7-linux-$tool && \
+            rm -f armv7-linux-$tool && \
+            printf '#!/bin/sh\nexec /opt/armv7-linux-musl/bin/arm-buildroot-linux-musleabihf-'$tool'.br_real "$@"\n' > armv7-linux-$tool && \
             chmod +x armv7-linux-$tool; \
         done && \
         cd ../.. && \
@@ -319,7 +321,8 @@ RUN set -ex && \
         mv "riscv64-lp64d--musl--stable-${BOOTLIN_VERSION}" riscv64-linux-musl && \
         cd riscv64-linux-musl/bin && \
         for tool in gcc g++ ar strip ranlib; do \
-            printf '#!/bin/sh\nexec /opt/riscv64-linux-musl/bin/riscv64-buildroot-linux-musl-'$tool' "$@"\n' > riscv64-linux-$tool && \
+            rm -f riscv64-linux-$tool && \
+            printf '#!/bin/sh\nexec /opt/riscv64-linux-musl/bin/riscv64-buildroot-linux-musl-'$tool'.br_real "$@"\n' > riscv64-linux-$tool && \
             chmod +x riscv64-linux-$tool; \
         done && \
         cd ../..; \
