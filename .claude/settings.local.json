@@ -14,7 +14,8 @@
       "Bash(gh release list:*)",
       "WebFetch(domain:android.googlesource.com)",
       "Bash(gh release view:*)",
-      "Bash(xargs:*)"
+      "Bash(xargs:*)",
+      "WebFetch(domain:api.github.com)"
     ]
   }
 }

@@ -20,10 +20,10 @@ A comprehensive Docker-based development environment that enables you to build p
 │  │    Native     │  │     Cross     │  │    Modern     │  │   WASM    │  │
 │  │   Compilers   │  │   Compilers   │  │   Languages   │  │ Toolchain │  │
 │  ├───────────────┤  ├───────────────┤  ├───────────────┤  ├───────────┤  │
-│  │ GCC           │  │ Bootlin ARM   │  │ Rust + Cargo  │  │ Emscripten│  │
-│  │ Clang/LLVM    │  │ LLVM MinGW    │  │ Go, Dart      │  │ WASI SDK  │  │
-│  │ mold linker   │  │ OSXCross      │  │ Zig           │  │ wasmtime  │  │
-│  │               │  │ Android NDK   │  │ TinyGo        │  │ wasm-pack │  │
+│  │ GCC           │  │ Bootlin/Zig   │  │ Rust + Cargo  │  │ WASI SDK  │  │
+│  │ Clang/LLVM    │  │ LLVM MinGW    │  │ Go, Dart      │  │ wasmtime  │  │
+│  │ mold linker   │  │ OSXCross      │  │ Zig           │  │ wasm-pack │  │
+│  │               │  │ Android NDK   │  │ TinyGo        │  │           │  │
 │  └───────────────┘  └───────────────┘  └───────────────┘  └───────────┘  │
 │                                                                          │
 │  ┌───────────────┐  ┌───────────────┐  ┌───────────────┐  ┌───────────┐  │
@@ -101,7 +101,7 @@ A comprehensive Docker-based development environment that enables you to build p
   - **mold** - blazingly fast linker (10x+ faster than ld)
   - **ccache** - compiler cache for faster rebuilds
   - **sccache** - distributed compilation cache
-- **Multi-architecture image**: Available for linux/amd64 and linux/arm64 runners
+- **Multi-architecture image**: Available for linux/amd64 and linux/arm64 runners with full cross-compilation support on both
 - **VS Code devcontainer** support for one-click development
 
 ## 📦 Available Images
@@ -126,7 +126,7 @@ The toolchain supports **23 compilation targets** across 8 operating system fami
 | **NetBSD** | AMD64, ARM64 | Clang | ✅ Full |
 | **illumos** | AMD64 | Clang | ✅ Full |
 | **Android** | ARM64, ARMv7, x86_64, x86 | NDK r27c | ⚠️ Partial |
-| **WebAssembly** | wasm32, wasm64, wasi | Emscripten/WASI SDK | ✅ Full |
+| **WebAssembly** | wasm32, wasi | WASI SDK | ✅ Full |
 | **Universal** | cosmo | Cosmopolitan | ✅ Full |
 
 ### Universal Binaries with Cosmopolitan
@@ -233,7 +233,6 @@ docker run --rm -v $(pwd):/workspace \
 | **Kotlin/Java** | `build.gradle`, `build.gradle.kts` | Gradle | `./gradlew build` |
 | **Java (Maven)** | `pom.xml` | Maven | `mvn package` |
 | **WASM (Rust)** | `Cargo.toml` + wasm target | wasm-pack | `wasm-pack build` |
-| **WASM (C/C++)** | Makefile with emcc | Emscripten | `emmake make` |
 
 > **Note:** Interpreted languages (Node.js, Python, Deno, Bun) are available in the toolchain for build scripts but are not supported by auto-detection. For interpreted language projects, see `devenvmgr/interpreters`.
 
@@ -469,8 +468,8 @@ docker run --rm -v $(pwd):/workspace \
 
 | Language | Compiler/Runtime | Cross-Compile | WebAssembly | Notes |
 |----------|-----------------|---------------|-------------|-------|
-| **C** | GCC, Clang, Zig, cosmocc | ✅ All targets | ✅ emcc, wasi | Full static support |
-| **C++** | G++, Clang++, Zig, cosmoc++ | ✅ All targets | ✅ em++, wasi | Full static support |
+| **C** | GCC, Clang, Zig, cosmocc | ✅ All targets | ✅ wasi | Full static support |
+| **C++** | G++, Clang++, Zig, cosmoc++ | ✅ All targets | ✅ wasi | Full static support |
 | **Rust** | rustc + Cargo | ✅ All targets | ✅ wasm-pack | Use `--target` flag |
 | **Go** | go build | ✅ Built-in | ✅ GOOS=js | Set GOOS/GOARCH |
 | **Dart** | dart compile exe | ✅ Linux | ❌ | Produces native executables |
@@ -515,8 +514,7 @@ docker run --rm -v $(pwd):/workspace \
 - **Perl**: For legacy build scripts
 
 ### WebAssembly Toolchain
-- **Emscripten**: C/C++ to WebAssembly compiler (emcc, em++)
-- **WASI SDK**: WebAssembly System Interface compiler
+- **WASI SDK**: WebAssembly System Interface compiler (Alpine native package)
 - **wasm-pack**: Build Rust for WebAssembly
 - **wasmtime**: Fast WebAssembly runtime
 
@@ -642,17 +640,17 @@ docker push ghcr.io/binmgr/toolchain:${COMMIT}
 - **Static**: Yes (musl allows truly static binaries)
 
 ### Linux ARM64
-- **Compiler**: Bootlin musl toolchain
+- **Compiler**: Bootlin musl toolchain (AMD64 host) or Zig (ARM64 host)
 - **Target**: aarch64-linux-musl
 - **Static**: Yes (musl allows truly static binaries)
 
 ### Windows AMD64
-- **Compiler**: MinGW-w64
+- **Compiler**: MinGW-w64 (AMD64 host) or LLVM-MinGW (ARM64 host)
 - **Target**: x86_64-w64-mingw32
 - **Static**: Yes (statically linked with MinGW runtime)
 
 ### Windows ARM64
-- **Compiler**: LLVM MinGW
+- **Compiler**: LLVM-MinGW
 - **Target**: aarch64-w64-mingw32
 - **Static**: Yes (statically linked)
 
@@ -708,25 +706,31 @@ docker push ghcr.io/binmgr/toolchain:${COMMIT}
 
 ## Image Architecture
 
-The image is built for **linux/amd64** (x86_64) and runs on standard GitHub Actions runners and most development machines.
+The image is built for both **linux/amd64** (x86_64) and **linux/arm64** (aarch64), supporting standard GitHub Actions runners, Apple Silicon Macs, and ARM-based cloud instances.
 
-**Important**: The image architecture (amd64) is different from build targets. This amd64 image can cross-compile binaries FOR:
-- Linux AMD64 (native)
-- Linux ARM64 (cross-compile)
-- Windows AMD64 (cross-compile)
-- Windows ARM64 (cross-compile)
-- macOS AMD64 (cross-compile)
-- macOS ARM64 (cross-compile)
-- FreeBSD AMD64 (cross-compile)
-- FreeBSD ARM64 (cross-compile)
-- OpenBSD AMD64 (cross-compile)
-- OpenBSD ARM64 (cross-compile)
-- NetBSD AMD64 (cross-compile)
-- NetBSD ARM64 (cross-compile)
-- Android ARM64-v8a (cross-compile)
-- Android ARMv7-a (cross-compile)
-- Android x86_64 (cross-compile)
-- Android x86 (cross-compile)
+**Both image architectures can cross-compile for all targets:**
+
+| Target | AMD64 Host | ARM64 Host |
+|--------|------------|------------|
+| Linux AMD64 | Native GCC | Zig |
+| Linux ARM64 | Bootlin GCC | Native GCC |
+| Linux ARMv7 | Bootlin GCC | Zig |
+| Linux RISC-V64 | Bootlin GCC | Zig |
+| Windows AMD64 | Alpine MinGW | LLVM-MinGW |
+| Windows ARM64 | Alpine MinGW | LLVM-MinGW |
+| Windows x86 | Not available | LLVM-MinGW |
+| macOS AMD64/ARM64 | OSXCross | OSXCross |
+| FreeBSD AMD64/ARM64 | Clang | Clang |
+| OpenBSD AMD64/ARM64 | Clang | Clang |
+| NetBSD AMD64/ARM64 | Clang | Clang |
+| Android (all archs) | NDK | NDK |
+| WebAssembly/WASI | WASI SDK | WASI SDK |
+| Cosmopolitan | cosmocc | cosmocc |
+
+**ARM64 host notes:**
+- Linux cross-compilation uses Zig instead of Bootlin GCC (produces compatible binaries)
+- Windows cross-compilation uses LLVM-MinGW (supports AMD64, ARM64, and x86 targets)
+- All other toolchains work identically on both host architectures
 
 ## Use Cases
 
@@ -765,7 +769,7 @@ This image enables building static binaries for:
 - Modern JavaScript/TypeScript development
 
 **WebAssembly Projects:**
-- Compile C/C++ to WebAssembly with Emscripten
+- Compile C/C++ to WebAssembly with WASI SDK
 - Build Rust for WASM with wasm-pack
 - TinyGo for WebAssembly targets
 - Run and test WASM modules with wasmtime
@@ -873,17 +877,19 @@ jobs:
 ### Example 4: WebAssembly Build
 
 ```bash
-# Build C/C++ project to WebAssembly
+# Build C project to WASI WebAssembly
 docker run --rm -v $(pwd):/workspace \
-  -e TARGET=wasm32 \
   ghcr.io/binmgr/toolchain:latest \
   bash -c '
-    emcc main.c -o main.html \
-      -O3 \
-      -s WASM=1 \
-      -s ALLOW_MEMORY_GROWTH=1 \
-      -s EXPORTED_FUNCTIONS="[_main]"
+    clang --target=wasm32-wasi \
+      --sysroot=/usr/share/wasi-sysroot \
+      -O3 main.c -o main.wasm
   '
+
+# Run with wasmtime
+docker run --rm -v $(pwd):/workspace \
+  ghcr.io/binmgr/toolchain:latest \
+  wasmtime main.wasm
 
 # Build Rust to WebAssembly
 docker run --rm -v $(pwd):/workspace \
@@ -1100,7 +1106,7 @@ ENTRYPOINT ["/binary"]
 | Header not found | All | Missing pkg-config path | Set PKG_CONFIG_PATH |
 | Slow compilation | All | No caching | Enable ccache/sccache |
 | Large binary size | All | Debug symbols | Use `strip` and `upx` |
-| WASM runtime error | wasi | Wrong target | Use wasi-sdk, not emcc |
+| WASM runtime error | wasi | Wrong target | Check WASI SDK flags |
 | Cosmo build fails | cosmo | Incompatible code | Check cosmo limitations |
 
 ### Built-in Diagnostic Commands
@@ -1382,7 +1388,7 @@ Copyright (c) 2026 binmgr
 - **LLVM MinGW** project for Windows ARM64 support
 - **OSXCross** for macOS cross-compilation
 - **Android NDK** team for comprehensive mobile support
-- **Emscripten** for WebAssembly compilation
+- **WASI SDK** for WebAssembly compilation
 - All the open-source projects that make this toolchain possible
 
 ---

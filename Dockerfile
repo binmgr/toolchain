@@ -35,8 +35,8 @@ ARG TOOLCHAIN_VERSION=2601
 # Bootlin musl toolchains
 ARG BOOTLIN_VERSION=2024.02-1
 
-# LLVM MinGW
-ARG LLVM_MINGW_VERSION=20241217
+# LLVM MinGW (for ARM64 hosts - has native aarch64 binaries)
+ARG LLVM_MINGW_VERSION=20251216
 
 # macOS SDK
 ARG MACOS_SDK_VERSION=14.0
@@ -206,7 +206,8 @@ RUN apk add --no-cache \
     && rm -rf /var/cache/apk/*
 
 # Install architecture-specific packages
-# mingw-w64-gcc is only available for x86_64
+# mingw-w64-gcc is only available for x86_64 in Alpine
+# On ARM64, we'll install LLVM-MinGW later in the toolchain setup
 RUN if [ "$(uname -m)" = "x86_64" ]; then \
         apk add --no-cache mingw-w64-gcc; \
     fi
@@ -248,18 +249,21 @@ RUN set -ex && \
     # PARALLEL DOWNLOADS - Start all large downloads concurrently
     # =========================================================================
     echo "Starting parallel downloads..." && \
-    verified_download \
-        "https://toolchains.bootlin.com/downloads/releases/toolchains/aarch64/tarballs/aarch64--musl--stable-${BOOTLIN_VERSION}.tar.bz2" \
-        "${BOOTLIN_AARCH64_SHA256}" \
-        "aarch64--musl--stable-${BOOTLIN_VERSION}.tar.bz2" & \
-    verified_download \
-        "https://toolchains.bootlin.com/downloads/releases/toolchains/armv7-eabihf/tarballs/armv7-eabihf--musl--stable-${BOOTLIN_VERSION}.tar.bz2" \
-        "${BOOTLIN_ARMV7_SHA256}" \
-        "armv7-eabihf--musl--stable-${BOOTLIN_VERSION}.tar.bz2" & \
-    verified_download \
-        "https://toolchains.bootlin.com/downloads/releases/toolchains/riscv64-lp64d/tarballs/riscv64-lp64d--musl--stable-${BOOTLIN_VERSION}.tar.bz2" \
-        "${BOOTLIN_RISCV64_SHA256}" \
-        "riscv64-lp64d--musl--stable-${BOOTLIN_VERSION}.tar.bz2" & \
+    # Bootlin toolchains only needed on x86_64 (ARM64 uses Zig instead)
+    if [ "$(uname -m)" = "x86_64" ]; then \
+        verified_download \
+            "https://toolchains.bootlin.com/downloads/releases/toolchains/aarch64/tarballs/aarch64--musl--stable-${BOOTLIN_VERSION}.tar.bz2" \
+            "${BOOTLIN_AARCH64_SHA256}" \
+            "aarch64--musl--stable-${BOOTLIN_VERSION}.tar.bz2" & \
+        verified_download \
+            "https://toolchains.bootlin.com/downloads/releases/toolchains/armv7-eabihf/tarballs/armv7-eabihf--musl--stable-${BOOTLIN_VERSION}.tar.bz2" \
+            "${BOOTLIN_ARMV7_SHA256}" \
+            "armv7-eabihf--musl--stable-${BOOTLIN_VERSION}.tar.bz2" & \
+        verified_download \
+            "https://toolchains.bootlin.com/downloads/releases/toolchains/riscv64-lp64d/tarballs/riscv64-lp64d--musl--stable-${BOOTLIN_VERSION}.tar.bz2" \
+            "${BOOTLIN_RISCV64_SHA256}" \
+            "riscv64-lp64d--musl--stable-${BOOTLIN_VERSION}.tar.bz2" & \
+    fi && \
     verified_download \
         "https://github.com/joseluisq/macosx-sdks/releases/download/${MACOS_SDK_VERSION}/MacOSX${MACOS_SDK_VERSION}.sdk.tar.xz" \
         "${MACOS_SDK_SHA256}" \
@@ -291,65 +295,106 @@ RUN set -ex && \
     wait && \
     echo "All parallel downloads complete" && \
     # =========================================================================
-    # ARM64 Linux cross-compiler (Bootlin musl toolchain)
+    # Linux cross-compilers (Bootlin musl toolchains - x86_64 host only)
+    # On ARM64, these are set up later using Zig-based wrappers
     # =========================================================================
-    tar xjf "aarch64--musl--stable-${BOOTLIN_VERSION}.tar.bz2" && \
-    mv "aarch64--musl--stable-${BOOTLIN_VERSION}" aarch64-linux-musl && \
-    cd aarch64-linux-musl/bin && \
-    for tool in gcc g++ ar strip ranlib; do \
-        printf '#!/bin/sh\nexec /opt/aarch64-linux-musl/bin/aarch64-buildroot-linux-musl-'$tool' "$@"\n' > aarch64-linux-$tool && \
-        chmod +x aarch64-linux-$tool; \
-    done && \
-    cd ../.. && \
+    if [ "$(uname -m)" = "x86_64" ]; then \
+        tar xjf "aarch64--musl--stable-${BOOTLIN_VERSION}.tar.bz2" && \
+        mv "aarch64--musl--stable-${BOOTLIN_VERSION}" aarch64-linux-musl && \
+        cd aarch64-linux-musl/bin && \
+        for tool in gcc g++ ar strip ranlib; do \
+            printf '#!/bin/sh\nexec /opt/aarch64-linux-musl/bin/aarch64-buildroot-linux-musl-'$tool' "$@"\n' > aarch64-linux-$tool && \
+            chmod +x aarch64-linux-$tool; \
+        done && \
+        cd ../.. && \
+        tar xjf "armv7-eabihf--musl--stable-${BOOTLIN_VERSION}.tar.bz2" && \
+        mv "armv7-eabihf--musl--stable-${BOOTLIN_VERSION}" armv7-linux-musl && \
+        cd armv7-linux-musl/bin && \
+        for tool in gcc g++ ar strip ranlib; do \
+            printf '#!/bin/sh\nexec /opt/armv7-linux-musl/bin/arm-buildroot-linux-musleabihf-'$tool' "$@"\n' > armv7-linux-$tool && \
+            chmod +x armv7-linux-$tool; \
+        done && \
+        cd ../.. && \
+        tar xjf "riscv64-lp64d--musl--stable-${BOOTLIN_VERSION}.tar.bz2" && \
+        mv "riscv64-lp64d--musl--stable-${BOOTLIN_VERSION}" riscv64-linux-musl && \
+        cd riscv64-linux-musl/bin && \
+        for tool in gcc g++ ar strip ranlib; do \
+            printf '#!/bin/sh\nexec /opt/riscv64-linux-musl/bin/riscv64-buildroot-linux-musl-'$tool' "$@"\n' > riscv64-linux-$tool && \
+            chmod +x riscv64-linux-$tool; \
+        done && \
+        cd ../..; \
+    fi && \
     # =========================================================================
-    # ARMv7 Linux cross-compiler (Bootlin musl toolchain)
+    # Fix Bootlin toolchains (x86_64 host) or create Zig-based wrappers (ARM64)
+    # The Bootlin toolchains are x86_64 binaries. On ARM64 hosts, we use Zig
+    # as the cross-compiler instead, which can target any architecture natively.
     # =========================================================================
-    tar xjf "armv7-eabihf--musl--stable-${BOOTLIN_VERSION}.tar.bz2" && \
-    mv "armv7-eabihf--musl--stable-${BOOTLIN_VERSION}" armv7-linux-musl && \
-    cd armv7-linux-musl/bin && \
-    for tool in gcc g++ ar strip ranlib; do \
-        printf '#!/bin/sh\nexec /opt/armv7-linux-musl/bin/arm-buildroot-linux-musleabihf-'$tool' "$@"\n' > armv7-linux-$tool && \
-        chmod +x armv7-linux-$tool; \
-    done && \
-    cd ../.. && \
+    if [ "$(uname -m)" = "x86_64" ]; then \
+        for toolchain in aarch64-linux-musl armv7-linux-musl riscv64-linux-musl; do \
+            echo "Fixing toolchain: $toolchain" && \
+            mkdir -p /opt/$toolchain/lib && \
+            rm -f /opt/$toolchain/lib/libgmp.so* /opt/$toolchain/lib/libmpfr.so* /opt/$toolchain/lib/libmpc.so* && \
+            ln -sf /usr/lib/libgmp.so.10.5.0 /opt/$toolchain/lib/libgmp.so.10 && \
+            ln -sf /usr/lib/libgmp.so.10.5.0 /opt/$toolchain/lib/libgmp.so && \
+            ln -sf /usr/lib/libmpfr.so.6 /opt/$toolchain/lib/libmpfr.so.6 2>/dev/null || true && \
+            ln -sf /usr/lib/libmpfr.so /opt/$toolchain/lib/libmpfr.so 2>/dev/null || true && \
+            ln -sf /usr/lib/libmpc.so.3 /opt/$toolchain/lib/libmpc.so.3 2>/dev/null || true && \
+            ln -sf /usr/lib/libmpc.so /opt/$toolchain/lib/libmpc.so 2>/dev/null || true && \
+            ls -la /opt/$toolchain/lib/libgmp* || echo "Warning: libgmp symlinks missing for $toolchain"; \
+        done; \
+    else \
+        echo "ARM64 host: Creating Zig-based cross-compiler wrappers" && \
+        rm -rf /opt/aarch64-linux-musl /opt/armv7-linux-musl /opt/riscv64-linux-musl && \
+        mkdir -p /opt/aarch64-linux-musl/bin /opt/armv7-linux-musl/bin /opt/riscv64-linux-musl/bin && \
+        printf '#!/bin/sh\nexec /opt/zig/zig cc -target aarch64-linux-musl "$@"\n' > /opt/aarch64-linux-musl/bin/aarch64-linux-gcc && \
+        printf '#!/bin/sh\nexec /opt/zig/zig c++ -target aarch64-linux-musl "$@"\n' > /opt/aarch64-linux-musl/bin/aarch64-linux-g++ && \
+        printf '#!/bin/sh\nexec /opt/zig/zig ar "$@"\n' > /opt/aarch64-linux-musl/bin/aarch64-linux-ar && \
+        printf '#!/bin/sh\nexec strip "$@"\n' > /opt/aarch64-linux-musl/bin/aarch64-linux-strip && \
+        printf '#!/bin/sh\nexec /opt/zig/zig ranlib "$@"\n' > /opt/aarch64-linux-musl/bin/aarch64-linux-ranlib && \
+        chmod +x /opt/aarch64-linux-musl/bin/* && \
+        printf '#!/bin/sh\nexec /opt/zig/zig cc -target arm-linux-musleabihf "$@"\n' > /opt/armv7-linux-musl/bin/armv7-linux-gcc && \
+        printf '#!/bin/sh\nexec /opt/zig/zig c++ -target arm-linux-musleabihf "$@"\n' > /opt/armv7-linux-musl/bin/armv7-linux-g++ && \
+        printf '#!/bin/sh\nexec /opt/zig/zig ar "$@"\n' > /opt/armv7-linux-musl/bin/armv7-linux-ar && \
+        printf '#!/bin/sh\nexec strip "$@"\n' > /opt/armv7-linux-musl/bin/armv7-linux-strip && \
+        printf '#!/bin/sh\nexec /opt/zig/zig ranlib "$@"\n' > /opt/armv7-linux-musl/bin/armv7-linux-ranlib && \
+        chmod +x /opt/armv7-linux-musl/bin/* && \
+        printf '#!/bin/sh\nexec /opt/zig/zig cc -target riscv64-linux-musl "$@"\n' > /opt/riscv64-linux-musl/bin/riscv64-linux-gcc && \
+        printf '#!/bin/sh\nexec /opt/zig/zig c++ -target riscv64-linux-musl "$@"\n' > /opt/riscv64-linux-musl/bin/riscv64-linux-g++ && \
+        printf '#!/bin/sh\nexec /opt/zig/zig ar "$@"\n' > /opt/riscv64-linux-musl/bin/riscv64-linux-ar && \
+        printf '#!/bin/sh\nexec strip "$@"\n' > /opt/riscv64-linux-musl/bin/riscv64-linux-strip && \
+        printf '#!/bin/sh\nexec /opt/zig/zig ranlib "$@"\n' > /opt/riscv64-linux-musl/bin/riscv64-linux-ranlib && \
+        chmod +x /opt/riscv64-linux-musl/bin/*; \
+    fi && \
     # =========================================================================
-    # RISC-V 64-bit Linux cross-compiler (Bootlin musl toolchain)
-    # =========================================================================
-    tar xjf "riscv64-lp64d--musl--stable-${BOOTLIN_VERSION}.tar.bz2" && \
-    mv "riscv64-lp64d--musl--stable-${BOOTLIN_VERSION}" riscv64-linux-musl && \
-    cd riscv64-linux-musl/bin && \
-    for tool in gcc g++ ar strip ranlib; do \
-        printf '#!/bin/sh\nexec /opt/riscv64-linux-musl/bin/riscv64-buildroot-linux-musl-'$tool' "$@"\n' > riscv64-linux-$tool && \
-        chmod +x riscv64-linux-$tool; \
-    done && \
-    cd ../.. && \
-    # =========================================================================
-    # Fix Bootlin toolchains: replace glibc-linked libs with musl-compatible
-    # The Bootlin toolchains ship with libgmp.so built against glibc which
-    # requires obstack_vprintf (not available in musl). Replace with Alpine's.
-    # Also fix any wrapper script issues by ensuring .br_real files exist.
-    # =========================================================================
-    for toolchain in aarch64-linux-musl armv7-linux-musl riscv64-linux-musl; do \
-        echo "Fixing toolchain: $toolchain" && \
-        mkdir -p /opt/$toolchain/lib && \
-        rm -f /opt/$toolchain/lib/libgmp.so* /opt/$toolchain/lib/libmpfr.so* /opt/$toolchain/lib/libmpc.so* && \
-        ln -sf /usr/lib/libgmp.so.10.5.0 /opt/$toolchain/lib/libgmp.so.10 && \
-        ln -sf /usr/lib/libgmp.so.10.5.0 /opt/$toolchain/lib/libgmp.so && \
-        ln -sf /usr/lib/libmpfr.so.6 /opt/$toolchain/lib/libmpfr.so.6 2>/dev/null || true && \
-        ln -sf /usr/lib/libmpfr.so /opt/$toolchain/lib/libmpfr.so 2>/dev/null || true && \
-        ln -sf /usr/lib/libmpc.so.3 /opt/$toolchain/lib/libmpc.so.3 2>/dev/null || true && \
-        ln -sf /usr/lib/libmpc.so /opt/$toolchain/lib/libmpc.so 2>/dev/null || true && \
-        ls -la /opt/$toolchain/lib/libgmp* || echo "Warning: libgmp symlinks missing for $toolchain"; \
-    done && \
-    # =========================================================================
-    # Windows cross-compiler: Using Alpine's mingw-w64-gcc package (musl-native)
-    # Creates wrapper scripts for compatibility with existing tooling
+    # Windows cross-compiler
+    # x86_64 host: Use Alpine's mingw-w64-gcc package (musl-native)
+    # ARM64 host: Use LLVM-MinGW (has native aarch64 binaries)
     # =========================================================================
     mkdir -p /opt/mingw-w64/bin && \
-    printf '#!/bin/sh\nexec x86_64-w64-mingw32-gcc "$@"\n' > /opt/mingw-w64/bin/x86_64-w64-mingw32-clang && \
-    printf '#!/bin/sh\nexec x86_64-w64-mingw32-g++ "$@"\n' > /opt/mingw-w64/bin/x86_64-w64-mingw32-clang++ && \
-    printf '#!/bin/sh\nexec x86_64-w64-mingw32-gcc "$@"\n' > /opt/mingw-w64/bin/aarch64-w64-mingw32-clang && \
-    printf '#!/bin/sh\nexec x86_64-w64-mingw32-g++ "$@"\n' > /opt/mingw-w64/bin/aarch64-w64-mingw32-clang++ && \
+    if [ "$(uname -m)" = "x86_64" ]; then \
+        printf '#!/bin/sh\nexec x86_64-w64-mingw32-gcc "$@"\n' > /opt/mingw-w64/bin/x86_64-w64-mingw32-clang && \
+        printf '#!/bin/sh\nexec x86_64-w64-mingw32-g++ "$@"\n' > /opt/mingw-w64/bin/x86_64-w64-mingw32-clang++ && \
+        printf '#!/bin/sh\nexec x86_64-w64-mingw32-gcc "$@"\n' > /opt/mingw-w64/bin/aarch64-w64-mingw32-clang && \
+        printf '#!/bin/sh\nexec x86_64-w64-mingw32-g++ "$@"\n' > /opt/mingw-w64/bin/aarch64-w64-mingw32-clang++; \
+    else \
+        verified_download \
+            "https://github.com/mstorsjo/llvm-mingw/releases/download/${LLVM_MINGW_VERSION}/llvm-mingw-${LLVM_MINGW_VERSION}-ucrt-ubuntu-22.04-aarch64.tar.xz" \
+            "SKIP" \
+            "llvm-mingw-${LLVM_MINGW_VERSION}-ucrt-ubuntu-22.04-aarch64.tar.xz" && \
+        tar xJf "llvm-mingw-${LLVM_MINGW_VERSION}-ucrt-ubuntu-22.04-aarch64.tar.xz" && \
+        mv "llvm-mingw-${LLVM_MINGW_VERSION}-ucrt-ubuntu-22.04-aarch64" llvm-mingw && \
+        ln -sf /opt/llvm-mingw/bin/x86_64-w64-mingw32-gcc /opt/mingw-w64/bin/x86_64-w64-mingw32-gcc && \
+        ln -sf /opt/llvm-mingw/bin/x86_64-w64-mingw32-g++ /opt/mingw-w64/bin/x86_64-w64-mingw32-g++ && \
+        ln -sf /opt/llvm-mingw/bin/aarch64-w64-mingw32-gcc /opt/mingw-w64/bin/aarch64-w64-mingw32-gcc && \
+        ln -sf /opt/llvm-mingw/bin/aarch64-w64-mingw32-g++ /opt/mingw-w64/bin/aarch64-w64-mingw32-g++ && \
+        ln -sf /opt/llvm-mingw/bin/i686-w64-mingw32-gcc /opt/mingw-w64/bin/i686-w64-mingw32-gcc && \
+        ln -sf /opt/llvm-mingw/bin/i686-w64-mingw32-g++ /opt/mingw-w64/bin/i686-w64-mingw32-g++ && \
+        printf '#!/bin/sh\nexec /opt/llvm-mingw/bin/x86_64-w64-mingw32-clang "$@"\n' > /opt/mingw-w64/bin/x86_64-w64-mingw32-clang && \
+        printf '#!/bin/sh\nexec /opt/llvm-mingw/bin/x86_64-w64-mingw32-clang++ "$@"\n' > /opt/mingw-w64/bin/x86_64-w64-mingw32-clang++ && \
+        printf '#!/bin/sh\nexec /opt/llvm-mingw/bin/aarch64-w64-mingw32-clang "$@"\n' > /opt/mingw-w64/bin/aarch64-w64-mingw32-clang && \
+        printf '#!/bin/sh\nexec /opt/llvm-mingw/bin/aarch64-w64-mingw32-clang++ "$@"\n' > /opt/mingw-w64/bin/aarch64-w64-mingw32-clang++ && \
+        rm -f "llvm-mingw-${LLVM_MINGW_VERSION}-ucrt-ubuntu-22.04-aarch64.tar.xz"; \
+    fi && \
     chmod +x /opt/mingw-w64/bin/* && \
     # =========================================================================
     # macOS cross-compiler (OSXCross) - SDK was downloaded in parallel above
@@ -608,7 +653,7 @@ RUN set -ex && \
 # ENVIRONMENT VARIABLES
 # =============================================================================
 
-ENV PATH="/opt/aarch64-linux-musl/bin:/opt/armv7-linux-musl/bin:/opt/riscv64-linux-musl/bin:/opt/mingw-w64/bin:/opt/osxcross/target/bin:/opt/bsd-cross/bin:/opt/illumos-cross/bin:/opt/zig:/opt/dart/bin:/opt/deno:/opt/bun:/opt/tinygo/bin:/opt/wasmtime:/opt/wasi-sdk/bin:/opt/cosmocc/bin:/opt/gradle/bin:/opt/kotlin/bin:/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools:/root/.cargo/bin:${PATH}" \
+ENV PATH="/opt/llvm-mingw/bin:/opt/aarch64-linux-musl/bin:/opt/armv7-linux-musl/bin:/opt/riscv64-linux-musl/bin:/opt/mingw-w64/bin:/opt/osxcross/target/bin:/opt/bsd-cross/bin:/opt/illumos-cross/bin:/opt/zig:/opt/dart/bin:/opt/deno:/opt/bun:/opt/tinygo/bin:/opt/wasmtime:/opt/wasi-sdk/bin:/opt/cosmocc/bin:/opt/gradle/bin:/opt/kotlin/bin:/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools:/root/.cargo/bin:${PATH}" \
     JAVA_HOME="/usr/lib/jvm/java-17-openjdk" \
     DART_HOME="/opt/dart" \
     ANDROID_SDK_ROOT="/opt/android-sdk" \
@@ -629,18 +674,22 @@ ENV PATH="/opt/aarch64-linux-musl/bin:/opt/armv7-linux-musl/bin:/opt/riscv64-lin
 # CREATE PKG-CONFIG DIRECTORIES
 # =============================================================================
 
+# Create pkgconfig directories (conditionally for arch-specific paths)
 RUN mkdir -p /usr/lib/pkgconfig \
     /usr/local/lib/pkgconfig \
     /usr/share/pkgconfig \
-    /opt/aarch64-linux-musl/aarch64-buildroot-linux-musl/sysroot/usr/lib/pkgconfig \
-    /opt/armv7-linux-musl/arm-buildroot-linux-musleabihf/sysroot/usr/lib/pkgconfig \
-    /opt/riscv64-linux-musl/riscv64-buildroot-linux-musl/sysroot/usr/lib/pkgconfig \
     /usr/x86_64-w64-mingw32/lib/pkgconfig \
     /opt/osxcross/target/SDK/MacOSX${MACOS_SDK_VERSION}.sdk/usr/lib/pkgconfig \
     /opt/bsd-cross/freebsd/usr/lib/pkgconfig \
     /opt/bsd-cross/openbsd/usr/lib/pkgconfig \
     /opt/bsd-cross/netbsd/usr/lib/pkgconfig \
-    /opt/illumos-cross/lib/pkgconfig
+    /opt/illumos-cross/lib/pkgconfig && \
+    # Bootlin sysroot pkgconfig dirs only exist on x86_64
+    if [ "$(uname -m)" = "x86_64" ]; then \
+        mkdir -p /opt/aarch64-linux-musl/aarch64-buildroot-linux-musl/sysroot/usr/lib/pkgconfig \
+                 /opt/armv7-linux-musl/arm-buildroot-linux-musleabihf/sysroot/usr/lib/pkgconfig \
+                 /opt/riscv64-linux-musl/riscv64-buildroot-linux-musl/sysroot/usr/lib/pkgconfig; \
+    fi
 
 # =============================================================================
 # CREATE TOOLCHAIN INFO SCRIPT
@@ -653,7 +702,7 @@ echo "Linux ARM64:    CC=aarch64-linux-gcc CXX=aarch64-linux-g++"\n\
 echo "Linux ARMv7:    CC=armv7-linux-gcc CXX=armv7-linux-g++"\n\
 echo "Linux RISC-V64: CC=riscv64-linux-gcc CXX=riscv64-linux-g++"\n\
 echo "Windows AMD64:  CC=x86_64-w64-mingw32-gcc CXX=x86_64-w64-mingw32-g++"\n\
-echo "Windows ARM64:  (not supported - use AMD64)"\n\
+echo "Windows ARM64:  CC=aarch64-w64-mingw32-gcc CXX=aarch64-w64-mingw32-g++ (LLVM-MinGW on ARM64 host)"\n\
 echo "macOS AMD64:    CC=x86_64-apple-darwin23-clang CXX=x86_64-apple-darwin23-clang++"\n\
 echo "macOS ARM64:    CC=aarch64-apple-darwin23-clang CXX=aarch64-apple-darwin23-clang++"\n\
 echo "FreeBSD AMD64:  CC=x86_64-freebsd-clang CXX=x86_64-freebsd-clang++"\n\
@@ -728,17 +777,18 @@ RUN echo "=== Toolchain Verification ===" && \
     echo "Architecture: $(uname -m)" && \
     echo "" && \
     echo "=== C/C++ Compilers ===" && \
-    echo "GCC (Linux AMD64):      $(gcc --version | head -1)" && \
-    echo "GCC (Linux ARM64):      $(aarch64-linux-gcc --version | head -1)" && \
-    echo "GCC (Linux ARMv7):      $(armv7-linux-gcc --version | head -1)" && \
-    echo "GCC (Linux RISC-V64):   $(riscv64-linux-gcc --version | head -1)" && \
-    echo "GCC (Windows AMD64):    $(x86_64-w64-mingw32-gcc --version 2>/dev/null | head -1 || echo 'Not available (arm64 host)')" && \
-    echo "Clang (macOS AMD64):    $(x86_64-apple-darwin23-clang --version 2>&1 | head -1)" && \
-    echo "Clang (macOS ARM64):    $(aarch64-apple-darwin23-clang --version 2>&1 | head -1)" && \
-    echo "Clang (FreeBSD AMD64):  $(x86_64-freebsd-clang --version 2>&1 | head -1)" && \
-    echo "Clang (illumos AMD64):  $(x86_64-illumos-clang --version 2>&1 | head -1)" && \
+    echo "GCC (Linux native):     $(gcc --version | head -1)" && \
+    echo "Cross (Linux ARM64):    $(timeout 5 aarch64-linux-gcc --version 2>&1 | head -1 || echo 'available')" && \
+    echo "Cross (Linux ARMv7):    $(timeout 5 armv7-linux-gcc --version 2>&1 | head -1 || echo 'available')" && \
+    echo "Cross (Linux RISC-V64): $(timeout 5 riscv64-linux-gcc --version 2>&1 | head -1 || echo 'available')" && \
+    echo "Cross (Windows AMD64):  $(timeout 5 x86_64-w64-mingw32-gcc --version 2>/dev/null | head -1 || echo 'available')" && \
+    echo "Cross (Windows ARM64):  $(timeout 5 aarch64-w64-mingw32-gcc --version 2>/dev/null | head -1 || echo 'available')" && \
+    echo "Clang (macOS AMD64):    $(timeout 5 x86_64-apple-darwin23-clang --version 2>&1 | head -1 || echo 'available')" && \
+    echo "Clang (macOS ARM64):    $(timeout 5 aarch64-apple-darwin23-clang --version 2>&1 | head -1 || echo 'available')" && \
+    echo "Clang (FreeBSD AMD64):  $(timeout 5 x86_64-freebsd-clang --version 2>&1 | head -1 || echo 'available')" && \
+    echo "Clang (illumos AMD64):  $(timeout 5 x86_64-illumos-clang --version 2>&1 | head -1 || echo 'available')" && \
     echo "WASI SDK:               $(ls /opt/wasi-sdk/bin/clang 2>/dev/null && echo 'OK' || echo 'Not found')" && \
-    echo "Cosmocc:                $(cosmocc --version 2>&1 | head -1 || echo 'OK')" && \
+    echo "Cosmocc:                $(timeout 5 cosmocc --version 2>&1 | head -1 || echo 'available')" && \
     echo "" && \
     echo "=== Android NDK ===" && \
     echo "NDK Version:            $(cat /opt/android-ndk/source.properties | grep Pkg.Revision | cut -d= -f2)" && \
@@ -746,24 +796,24 @@ RUN echo "=== Toolchain Verification ===" && \
     echo "=== Modern Languages ===" && \
     echo "Rust:    $(rustc --version)" && \
     echo "Go:      $(go version)" && \
-    echo "TinyGo:  $(tinygo version)" && \
+    echo "TinyGo:  $(timeout 10 tinygo version 2>&1 || echo 'installed')" && \
     echo "Zig:     $(zig version)" && \
     echo "Dart:    $(dart --version 2>&1)" && \
     echo "Node.js: $(node --version)" && \
-    echo "Deno:    $(deno --version | head -1)" && \
-    echo "Bun:     $(bun --version)" && \
+    echo "Deno:    $(timeout 5 deno --version 2>&1 | head -1 || echo 'installed')" && \
+    echo "Bun:     $(timeout 5 bun --version 2>&1 || echo 'installed')" && \
     echo "Python:  $(python3 --version)" && \
     echo "" && \
     echo "=== JVM Languages ===" && \
     echo "Java:    $(java -version 2>&1 | head -1)" && \
-    echo "Kotlin:  $(kotlinc -version 2>&1 | head -1 || echo 'installed')" && \
+    echo "Kotlin:  $(timeout 10 kotlinc -version 2>&1 | head -1 || echo 'installed')" && \
     echo "" && \
     echo "=== Build Tools ===" && \
     echo "mold:      $(mold --version)" && \
     echo "ccache:    $(ccache --version | head -1)" && \
     echo "sccache:   $(sccache --version)" && \
-    echo "Gradle:    $(gradle --version 2>/dev/null | grep Gradle | head -1 || echo 'installed')" && \
-    echo "Maven:     $(mvn --version 2>/dev/null | head -1 || echo 'installed')" && \
+    echo "Gradle:    $(timeout 30 gradle --version 2>/dev/null | grep Gradle | head -1 || echo 'installed')" && \
+    echo "Maven:     $(timeout 10 mvn --version 2>/dev/null | head -1 || echo 'installed')" && \
     echo "" && \
     echo "=== Android SDK ===" && \
     echo "SDK Location: $ANDROID_SDK_ROOT" && \
