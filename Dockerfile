@@ -85,10 +85,10 @@ LABEL org.opencontainers.image.base.name="alpine:latest"
 # Custom labels for toolchain capabilities
 LABEL binmgr.toolchain.version="${TOOLCHAIN_VERSION}"
 LABEL binmgr.toolchain.languages="c,c++,rust,go,tinygo,zig,dart,nodejs,deno,bun,python,perl,wasm,kotlin,java"
-LABEL binmgr.toolchain.targets="linux-amd64,linux-arm64,linux-armv7,linux-riscv64,windows-amd64,windows-arm64,darwin-amd64,darwin-arm64,freebsd-amd64,freebsd-arm64,openbsd-amd64,openbsd-arm64,netbsd-amd64,netbsd-arm64,illumos-amd64,android-arm64,android-armv7,android-x86_64,android-x86,wasm32,wasm64,wasi,cosmo"
+LABEL binmgr.toolchain.targets="linux-amd64,linux-arm64,linux-armv7,linux-riscv64,windows-amd64,windows-arm64,darwin-amd64,darwin-arm64,freebsd-amd64,freebsd-arm64,openbsd-amd64,openbsd-arm64,netbsd-amd64,netbsd-arm64,illumos-amd64,android-arm64,android-armv7,android-x86_64,android-x86,wasi,cosmo"
 LABEL binmgr.toolchain.libc="musl"
 LABEL binmgr.toolchain.static="true"
-LABEL binmgr.toolchain.compilers="gcc,clang,rustc,go,tinygo,zig,dart,emcc,cosmocc,kotlinc,javac"
+LABEL binmgr.toolchain.compilers="gcc,clang,rustc,go,tinygo,zig,dart,cosmocc,kotlinc,javac"
 LABEL binmgr.toolchain.build-systems="make,cmake,meson,ninja,cargo,go-build,gradle,maven"
 LABEL binmgr.toolchain.runtimes="node,deno,bun,wasmtime,qemu"
 LABEL binmgr.toolchain.tools="ccache,sccache,mold,upx,valgrind,shellcheck,doxygen,wasm-pack"
@@ -242,14 +242,57 @@ RUN chmod +x /usr/local/bin/verified_download
 
 # Download and install all toolchains with SHA256 verification
 # SECURITY: All downloads are verified against known checksums to prevent supply chain attacks
+# OPTIMIZATION: Downloads run in parallel where possible to reduce build time
 RUN set -ex && \
     # =========================================================================
-    # ARM64 Linux cross-compiler (Bootlin musl toolchain)
+    # PARALLEL DOWNLOADS - Start all large downloads concurrently
     # =========================================================================
+    echo "Starting parallel downloads..." && \
     verified_download \
         "https://toolchains.bootlin.com/downloads/releases/toolchains/aarch64/tarballs/aarch64--musl--stable-${BOOTLIN_VERSION}.tar.bz2" \
         "${BOOTLIN_AARCH64_SHA256}" \
-        "aarch64--musl--stable-${BOOTLIN_VERSION}.tar.bz2" && \
+        "aarch64--musl--stable-${BOOTLIN_VERSION}.tar.bz2" & \
+    verified_download \
+        "https://toolchains.bootlin.com/downloads/releases/toolchains/armv7-eabihf/tarballs/armv7-eabihf--musl--stable-${BOOTLIN_VERSION}.tar.bz2" \
+        "${BOOTLIN_ARMV7_SHA256}" \
+        "armv7-eabihf--musl--stable-${BOOTLIN_VERSION}.tar.bz2" & \
+    verified_download \
+        "https://toolchains.bootlin.com/downloads/releases/toolchains/riscv64-lp64d/tarballs/riscv64-lp64d--musl--stable-${BOOTLIN_VERSION}.tar.bz2" \
+        "${BOOTLIN_RISCV64_SHA256}" \
+        "riscv64-lp64d--musl--stable-${BOOTLIN_VERSION}.tar.bz2" & \
+    verified_download \
+        "https://github.com/joseluisq/macosx-sdks/releases/download/${MACOS_SDK_VERSION}/MacOSX${MACOS_SDK_VERSION}.sdk.tar.xz" \
+        "${MACOS_SDK_SHA256}" \
+        "MacOSX${MACOS_SDK_VERSION}.sdk.tar.xz" & \
+    verified_download \
+        "https://dl.google.com/android/repository/android-ndk-${ANDROID_NDK_VERSION}-linux.zip" \
+        "${ANDROID_NDK_SHA256}" \
+        "android-ndk-${ANDROID_NDK_VERSION}-linux.zip" & \
+    verified_download \
+        "https://download.freebsd.org/releases/amd64/${FREEBSD_VERSION}-RELEASE/base.txz" \
+        "${FREEBSD_BASE_SHA256}" \
+        "base.txz" & \
+    verified_download \
+        "https://github.com/jart/cosmopolitan/releases/download/${COSMO_VERSION}/cosmocc-${COSMO_VERSION}.zip" \
+        "${COSMO_SHA256}" \
+        "cosmocc-${COSMO_VERSION}.zip" & \
+    verified_download \
+        "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip" \
+        "${GRADLE_SHA256}" \
+        "gradle-${GRADLE_VERSION}-bin.zip" & \
+    verified_download \
+        "https://github.com/JetBrains/kotlin/releases/download/v${KOTLIN_VERSION}/kotlin-compiler-${KOTLIN_VERSION}.zip" \
+        "${KOTLIN_SHA256}" \
+        "kotlin-compiler-${KOTLIN_VERSION}.zip" & \
+    verified_download \
+        "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip" \
+        "${ANDROID_CMDLINE_TOOLS_SHA256}" \
+        "cmdline-tools.zip" & \
+    wait && \
+    echo "All parallel downloads complete" && \
+    # =========================================================================
+    # ARM64 Linux cross-compiler (Bootlin musl toolchain)
+    # =========================================================================
     tar xjf "aarch64--musl--stable-${BOOTLIN_VERSION}.tar.bz2" && \
     mv "aarch64--musl--stable-${BOOTLIN_VERSION}" aarch64-linux-musl && \
     cd aarch64-linux-musl/bin && \
@@ -261,10 +304,6 @@ RUN set -ex && \
     # =========================================================================
     # ARMv7 Linux cross-compiler (Bootlin musl toolchain)
     # =========================================================================
-    verified_download \
-        "https://toolchains.bootlin.com/downloads/releases/toolchains/armv7-eabihf/tarballs/armv7-eabihf--musl--stable-${BOOTLIN_VERSION}.tar.bz2" \
-        "${BOOTLIN_ARMV7_SHA256}" \
-        "armv7-eabihf--musl--stable-${BOOTLIN_VERSION}.tar.bz2" && \
     tar xjf "armv7-eabihf--musl--stable-${BOOTLIN_VERSION}.tar.bz2" && \
     mv "armv7-eabihf--musl--stable-${BOOTLIN_VERSION}" armv7-linux-musl && \
     cd armv7-linux-musl/bin && \
@@ -276,10 +315,6 @@ RUN set -ex && \
     # =========================================================================
     # RISC-V 64-bit Linux cross-compiler (Bootlin musl toolchain)
     # =========================================================================
-    verified_download \
-        "https://toolchains.bootlin.com/downloads/releases/toolchains/riscv64-lp64d/tarballs/riscv64-lp64d--musl--stable-${BOOTLIN_VERSION}.tar.bz2" \
-        "${BOOTLIN_RISCV64_SHA256}" \
-        "riscv64-lp64d--musl--stable-${BOOTLIN_VERSION}.tar.bz2" && \
     tar xjf "riscv64-lp64d--musl--stable-${BOOTLIN_VERSION}.tar.bz2" && \
     mv "riscv64-lp64d--musl--stable-${BOOTLIN_VERSION}" riscv64-linux-musl && \
     cd riscv64-linux-musl/bin && \
@@ -317,38 +352,27 @@ RUN set -ex && \
     printf '#!/bin/sh\nexec x86_64-w64-mingw32-g++ "$@"\n' > /opt/mingw-w64/bin/aarch64-w64-mingw32-clang++ && \
     chmod +x /opt/mingw-w64/bin/* && \
     # =========================================================================
-    # macOS cross-compiler (OSXCross)
+    # macOS cross-compiler (OSXCross) - SDK was downloaded in parallel above
     # =========================================================================
     git clone --depth 1 https://github.com/tpoechtrager/osxcross.git && \
     cd osxcross && \
     mkdir -p tarballs && \
-    verified_download \
-        "https://github.com/joseluisq/macosx-sdks/releases/download/${MACOS_SDK_VERSION}/MacOSX${MACOS_SDK_VERSION}.sdk.tar.xz" \
-        "${MACOS_SDK_SHA256}" \
-        "tarballs/MacOSX${MACOS_SDK_VERSION}.sdk.tar.xz" && \
+    mv ../MacOSX${MACOS_SDK_VERSION}.sdk.tar.xz tarballs/ && \
     UNATTENDED=1 ./build.sh && \
     rm -rf build tarballs *.sh *.md .git && \
     cd .. && \
     # =========================================================================
-    # Android NDK
+    # Android NDK - was downloaded in parallel above
     # =========================================================================
-    verified_download \
-        "https://dl.google.com/android/repository/android-ndk-${ANDROID_NDK_VERSION}-linux.zip" \
-        "${ANDROID_NDK_SHA256}" \
-        "android-ndk-${ANDROID_NDK_VERSION}-linux.zip" && \
     unzip -q "android-ndk-${ANDROID_NDK_VERSION}-linux.zip" && \
     mv "android-ndk-${ANDROID_NDK_VERSION}" android-ndk && \
     # =========================================================================
-    # BSD cross-compilation sysroots
+    # BSD cross-compilation sysroots - base.txz was downloaded in parallel above
     # =========================================================================
     mkdir -p bsd-cross/freebsd/{include,lib} && \
     mkdir -p bsd-cross/openbsd/{include,lib} && \
     mkdir -p bsd-cross/netbsd/{include,lib} && \
     mkdir -p bsd-cross/bin && \
-    verified_download \
-        "https://download.freebsd.org/releases/amd64/${FREEBSD_VERSION}-RELEASE/base.txz" \
-        "${FREEBSD_BASE_SHA256}" \
-        "base.txz" && \
     tar xJf base.txz -C bsd-cross/freebsd --strip-components=1 ./usr/include ./usr/lib ./lib 2>/dev/null || true && \
     # =========================================================================
     # illumos/Solaris cross-compilation support
@@ -452,16 +476,11 @@ RUN set -ex && \
     ln -sf /usr/bin/clang++ /opt/wasi-sdk/bin/clang++ && \
     ln -sf /usr/share/wasi-sysroot /opt/wasi-sdk/share/wasi-sysroot && \
     # =========================================================================
-    # Cosmopolitan libc - Universal fat binaries
+    # Cosmopolitan libc - was downloaded in parallel above
     # =========================================================================
     mkdir -p cosmocc && \
     cd cosmocc && \
-    verified_download \
-        "https://github.com/jart/cosmopolitan/releases/download/${COSMO_VERSION}/cosmocc-${COSMO_VERSION}.zip" \
-        "${COSMO_SHA256}" \
-        "cosmocc-${COSMO_VERSION}.zip" && \
-    unzip -q "cosmocc-${COSMO_VERSION}.zip" && \
-    rm -f "cosmocc-${COSMO_VERSION}.zip" && \
+    unzip -q "../cosmocc-${COSMO_VERSION}.zip" && \
     cd .. && \
     # =========================================================================
     # sccache - Distributed compilation cache
@@ -484,14 +503,9 @@ RUN set -ex && \
         rm -rf "sccache-v${SCCACHE_VERSION}-aarch64-unknown-linux-musl"; \
     fi && \
     # =========================================================================
-    # Emscripten - C/C++ to WebAssembly compiler
-    # Note: Uses git clone, verification is via git's integrity checks
+    # Emscripten removed - use Alpine's native wasi-sdk instead
+    # For WASM: clang --target=wasm32-wasi --sysroot=/usr/share/wasi-sysroot
     # =========================================================================
-    git clone --depth 1 https://github.com/emscripten-core/emsdk.git && \
-    cd emsdk && \
-    ./emsdk install latest && \
-    ./emsdk activate latest && \
-    cd .. && \
     # =========================================================================
     # wasm-pack - Rust/WASM packaging tool (pre-built binary)
     # =========================================================================
@@ -513,31 +527,19 @@ RUN set -ex && \
         rm -rf wasm-pack-v${WASM_PACK_VERSION}-aarch64-unknown-linux-musl wasm-pack.tar.gz; \
     fi && \
     # =========================================================================
-    # Gradle build system
+    # Gradle build system - was downloaded in parallel above
     # =========================================================================
-    verified_download \
-        "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip" \
-        "${GRADLE_SHA256}" \
-        "gradle-${GRADLE_VERSION}-bin.zip" && \
     unzip -q "gradle-${GRADLE_VERSION}-bin.zip" && \
     mv "gradle-${GRADLE_VERSION}" gradle && \
     # =========================================================================
-    # Kotlin compiler
+    # Kotlin compiler - was downloaded in parallel above
     # =========================================================================
-    verified_download \
-        "https://github.com/JetBrains/kotlin/releases/download/v${KOTLIN_VERSION}/kotlin-compiler-${KOTLIN_VERSION}.zip" \
-        "${KOTLIN_SHA256}" \
-        "kotlin-compiler-${KOTLIN_VERSION}.zip" && \
     unzip -q "kotlin-compiler-${KOTLIN_VERSION}.zip" && \
     mv kotlinc kotlin && \
     # =========================================================================
-    # Android SDK Command-line Tools
+    # Android SDK Command-line Tools - was downloaded in parallel above
     # =========================================================================
     mkdir -p android-sdk/cmdline-tools && \
-    verified_download \
-        "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip" \
-        "${ANDROID_CMDLINE_TOOLS_SHA256}" \
-        "cmdline-tools.zip" && \
     unzip -q cmdline-tools.zip -d android-sdk/cmdline-tools && \
     mv android-sdk/cmdline-tools/cmdline-tools android-sdk/cmdline-tools/latest && \
     export ANDROID_SDK_ROOT=/opt/android-sdk && \
@@ -593,8 +595,6 @@ RUN set -ex && \
     find . -path "*/share/doc/*.o" -delete 2>/dev/null || true && \
     find . -type d \( -name "test" -o -name "tests" -o -name "examples" \) \
         -not -path "*/sysroot/*" -not -path "*/cosmocc/*" -exec rm -rf {} + 2>/dev/null || true && \
-    # Clean emsdk git history
-    rm -rf /opt/emsdk/.git /opt/emsdk/.github 2>/dev/null || true && \
     # Clean Android NDK non-essential components
     rm -rf /opt/android-ndk/simpleperf /opt/android-ndk/shader-tools 2>/dev/null || true && \
     rm -f /opt/android-ndk/CHANGELOG.md /opt/android-ndk/README.md 2>/dev/null || true && \
@@ -608,7 +608,7 @@ RUN set -ex && \
 # ENVIRONMENT VARIABLES
 # =============================================================================
 
-ENV PATH="/opt/aarch64-linux-musl/bin:/opt/armv7-linux-musl/bin:/opt/riscv64-linux-musl/bin:/opt/mingw-w64/bin:/opt/osxcross/target/bin:/opt/bsd-cross/bin:/opt/illumos-cross/bin:/opt/zig:/opt/dart/bin:/opt/deno:/opt/bun:/opt/tinygo/bin:/opt/wasmtime:/opt/wasi-sdk/bin:/opt/cosmocc/bin:/opt/emsdk:/opt/emsdk/upstream/emscripten:/opt/gradle/bin:/opt/kotlin/bin:/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools:/root/.cargo/bin:${PATH}" \
+ENV PATH="/opt/aarch64-linux-musl/bin:/opt/armv7-linux-musl/bin:/opt/riscv64-linux-musl/bin:/opt/mingw-w64/bin:/opt/osxcross/target/bin:/opt/bsd-cross/bin:/opt/illumos-cross/bin:/opt/zig:/opt/dart/bin:/opt/deno:/opt/bun:/opt/tinygo/bin:/opt/wasmtime:/opt/wasi-sdk/bin:/opt/cosmocc/bin:/opt/gradle/bin:/opt/kotlin/bin:/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools:/root/.cargo/bin:${PATH}" \
     JAVA_HOME="/usr/lib/jvm/java-17-openjdk" \
     DART_HOME="/opt/dart" \
     ANDROID_SDK_ROOT="/opt/android-sdk" \
@@ -619,8 +619,6 @@ ENV PATH="/opt/aarch64-linux-musl/bin:/opt/armv7-linux-musl/bin:/opt/riscv64-lin
     KOTLIN_HOME="/opt/kotlin" \
     WASI_SDK_PATH="/opt/wasi-sdk" \
     COSMOCC_HOME="/opt/cosmocc" \
-    EMSDK="/opt/emsdk" \
-    EM_CONFIG="/opt/emsdk/.emscripten" \
     CCACHE_DIR="/workspace/.ccache" \
     SCCACHE_DIR="/workspace/.sccache" \
     PKG_CONFIG_PATH="/usr/lib/pkgconfig:/usr/local/lib/pkgconfig:/usr/share/pkgconfig" \
@@ -704,7 +702,6 @@ echo ""\n\
 echo "=== WebAssembly Toolchain ==="\n\
 echo "wasm-pack:  $(wasm-pack --version 2>/dev/null)"\n\
 echo "wasmtime:   $(wasmtime --version 2>/dev/null)"\n\
-echo "emcc:       $(emcc --version 2>/dev/null | head -1)"\n\
 echo "wasi-sdk:   /usr/share/wasi-sysroot (Alpine package)"\n\
 ' > /usr/local/bin/toolchain-info && \
     chmod +x /usr/local/bin/toolchain-info
@@ -775,7 +772,7 @@ RUN echo "=== Toolchain Verification ===" && \
     echo "=== WebAssembly Toolchain ===" && \
     echo "wasm-pack: $(wasm-pack --version)" && \
     echo "wasmtime:  $(wasmtime --version)" && \
-    echo "emcc:      $(emcc --version | head -1)" && \
+    echo "wasi-sdk:  /usr/share/wasi-sysroot (Alpine native)" && \
     echo "" && \
     echo "=== All toolchains ready ==="
 

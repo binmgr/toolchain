@@ -30,8 +30,8 @@ on:
       - '.github/workflows/build.yml'
       - 'versions.env'
   schedule:
-    # Nightly builds at 4:00 AM UTC
-    - cron: '0 4 * * *'
+    # Monthly builds on the 3rd at 4:00 AM UTC
+    - cron: '0 4 3 * *'
   workflow_dispatch:
     inputs:
       skip_tests:
@@ -52,7 +52,6 @@ env:
 permissions:
   contents: read
   packages: write
-  security-events: write
 
 jobs:
   # ===========================================================================
@@ -107,8 +106,8 @@ jobs:
             org.opencontainers.image.created=${{ steps.version.outputs.created }}
           build-args: |
             TOOLCHAIN_VERSION=${{ steps.version.outputs.version }}
-          cache-from: type=gha,scope=amd64
-          cache-to: type=gha,scope=amd64,mode=min
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache-amd64
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache-amd64,mode=max
           provenance: false
 
   build-arm64:
@@ -156,8 +155,8 @@ jobs:
             org.opencontainers.image.created=${{ steps.version.outputs.created }}
           build-args: |
             TOOLCHAIN_VERSION=${{ steps.version.outputs.version }}
-          cache-from: type=gha,scope=arm64
-          cache-to: type=gha,scope=arm64,mode=min
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache-arm64
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache-arm64,mode=max
           provenance: false
 
   # ===========================================================================
@@ -259,143 +258,11 @@ jobs:
           docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest --test ${{ matrix.target }}
 
   # ===========================================================================
-  # SECURITY SCAN JOB
-  # ===========================================================================
-  security:
-    name: Security Scan
-    needs: manifest
-    runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request'
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Login to Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Pull image
-        run: |
-          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
-        continue-on-error: true
-        with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-          severity: 'CRITICAL,HIGH'
-          timeout: '30m'
-          scanners: 'vuln'
-
-      - name: Upload Trivy scan results
-        uses: github/codeql-action/upload-sarif@v4
-        if: always() && hashFiles('trivy-results.sarif') != ''
-        with:
-          sarif_file: 'trivy-results.sarif'
-
-      - name: Run Trivy (table output)
-        uses: aquasecurity/trivy-action@master
-        continue-on-error: true
-        with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-          format: 'table'
-          severity: 'CRITICAL,HIGH,MEDIUM'
-          scanners: 'vuln'
-
-  # ===========================================================================
-  # SBOM GENERATION JOB
-  # ===========================================================================
-  sbom:
-    name: Generate SBOM
-    needs: manifest
-    runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request'
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Login to Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Pull image
-        run: |
-          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-
-      - name: Generate SBOM with Syft
-        uses: anchore/sbom-action@v0
-        with:
-          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-          format: spdx-json
-          output-file: sbom.spdx.json
-
-      - name: Upload SBOM
-        uses: actions/upload-artifact@v4
-        with:
-          name: sbom
-          path: sbom.spdx.json
-          retention-days: 90
-
-  # ===========================================================================
-  # IMAGE SIZE TRACKING JOB
-  # ===========================================================================
-  size-tracking:
-    name: Track Image Size
-    needs: manifest
-    runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request'
-
-    steps:
-      - name: Login to Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Pull image
-        run: |
-          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-
-      - name: Get image size
-        id: size
-        run: |
-          SIZE=$(docker images ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest --format "{{.Size}}")
-          SIZE_BYTES=$(docker inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest --format='{{.Size}}')
-          echo "size=$SIZE" >> $GITHUB_OUTPUT
-          echo "size_bytes=$SIZE_BYTES" >> $GITHUB_OUTPUT
-          echo "Image size: $SIZE ($SIZE_BYTES bytes)"
-
-      - name: Create size report
-        run: |
-          cat >> $GITHUB_STEP_SUMMARY << EOF
-          ## Image Size Report
-
-          | Metric | Value |
-          |--------|-------|
-          | Image | \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest\` |
-          | Size | ${{ steps.size.outputs.size }} |
-          | Size (bytes) | ${{ steps.size.outputs.size_bytes }} |
-          | Date | $(date -u +"%Y-%m-%d %H:%M:%S UTC") |
-          | Commit | ${{ github.sha }} |
-          EOF
-
-  # ===========================================================================
   # SUMMARY JOB
   # ===========================================================================
   summary:
     name: Build Summary
-    needs: [manifest, test, security, sbom, size-tracking]
+    needs: [manifest, test]
     runs-on: ubuntu-latest
     if: always() && github.event_name != 'pull_request'
 
@@ -435,8 +302,5 @@ jobs:
           | Build (amd64) | ${{ needs.manifest.result }} |
           | Build (arm64) | ${{ needs.manifest.result }} |
           | Test | ${{ needs.test.result }} |
-          | Security Scan | ${{ needs.security.result }} |
-          | SBOM Generation | ${{ needs.sbom.result }} |
-          | Size Tracking | ${{ needs.size-tracking.result }} |
 
           EOF

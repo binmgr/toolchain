@@ -172,14 +172,6 @@ detect_project_type() {
         print_success "Detected: WebAssembly project (Rust/wasm-pack)"
     fi
 
-    # Emscripten (look for emcc in Makefile)
-    if [ -z "$detected" ] && grep -q "emcc\|emscripten" "$dir/Makefile" 2>/dev/null; then
-        detected="emscripten"
-        build_system="emscripten"
-        language="c/c++"
-        print_success "Detected: WebAssembly project (Emscripten)"
-    fi
-
     # Not detected
     if [ -z "$detected" ]; then
         print_warning "Could not auto-detect project type"
@@ -195,7 +187,7 @@ detect_project_type() {
         echo "  - C/C++ with Make (Makefile)"
         echo "  - Android/Kotlin (build.gradle, build.gradle.kts)"
         echo "  - Java with Maven (pom.xml)"
-        echo "  - WebAssembly (wasm-pack, emscripten)"
+        echo "  - WebAssembly (wasm-pack, wasi-sdk)"
         echo ""
         echo "Note: Interpreted languages (Node.js, Python, etc.) are not"
         echo "      supported for auto-build. Use devenvmgr/interpreters instead."
@@ -273,10 +265,6 @@ detect_project_type() {
         wasm-rust)
             echo "  wasm-pack build --release   # Build WASM package"
             echo "  wasm-pack build --target web  # For web browsers"
-            ;;
-        emscripten)
-            echo "  emmake make                 # Build with Emscripten"
-            echo "  emcc main.c -o main.html    # Compile to WASM"
             ;;
     esac
     echo ""
@@ -395,14 +383,6 @@ auto_build() {
         wasm-rust)
             wasm-pack build --release
             ;;
-        emscripten)
-            if [ -f "Makefile" ]; then
-                emmake make -j$(nproc)
-            else
-                print_error "No Makefile found for Emscripten build"
-                return 1
-            fi
-            ;;
         *)
             print_error "No auto-build available for: $PROJECT_TYPE"
             return 1
@@ -469,7 +449,7 @@ ${YELLOW}AVAILABLE TARGETS:${NC}
     ${GREEN}NetBSD:${NC}         netbsd-amd64, netbsd-arm64
     ${GREEN}illumos:${NC}        illumos-amd64
     ${GREEN}Android:${NC}        android-arm64, android-armv7, android-x86_64, android-x86
-    ${GREEN}WebAssembly:${NC}    wasm32, wasm64, wasi
+    ${GREEN}WebAssembly:${NC}    wasi
     ${GREEN}Universal:${NC}      cosmo
 
 ${YELLOW}EXAMPLES:${NC}
@@ -556,9 +536,7 @@ list_targets() {
     echo "  android-x86        x86 (Intel/AMD 32-bit)"
     echo ""
     echo -e "${GREEN}WebAssembly:${NC}"
-    echo "  wasm32             32-bit WebAssembly (Emscripten)"
-    echo "  wasm64             64-bit WebAssembly (experimental)"
-    echo "  wasi               WebAssembly System Interface"
+    echo "  wasi               WebAssembly System Interface (wasi-sdk)"
     echo ""
     echo -e "${GREEN}Universal Binary:${NC}"
     echo "  cosmo              Cosmopolitan (runs on Linux/macOS/Windows/BSD)"
@@ -787,13 +765,6 @@ setup_target() {
         # =====================================================================
         # WEBASSEMBLY TARGETS
         # =====================================================================
-        wasm32|wasm64)
-            export CC=emcc
-            export CXX=em++
-            export AR=emar
-            export RANLIB=emranlib
-            # Emscripten has its own pkg-config handling
-            ;;
         wasi)
             # Alpine's native wasi-sdk package (requires lld linker)
             export CC="clang --target=wasm32-wasi --sysroot=/usr/share/wasi-sysroot -fuse-ld=lld"
