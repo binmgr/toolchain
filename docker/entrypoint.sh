@@ -860,7 +860,6 @@ EOF
     # Compile
     print_info "Compiling test program..."
     local output="$test_dir/hello"
-    local compile_cmd=""
 
     case "$target" in
         windows-*)
@@ -874,7 +873,8 @@ EOF
             ;;
     esac
 
-    if $CC $CFLAGS $LDFLAGS "$test_dir/hello.c" -o "$output" 2>&1; then
+    # Use timeout to prevent hanging (Bootlin toolchain-wrapper can stall)
+    if timeout 60 $CC $CFLAGS $LDFLAGS "$test_dir/hello.c" -o "$output" 2>&1; then
         print_success "Compilation successful!"
         echo ""
         echo "Binary info:"
@@ -882,34 +882,40 @@ EOF
         echo ""
         echo "Size: $(ls -lh "$output" | awk '{print $5}')"
 
-        # Try to run if possible
+        # Try to run if possible (with timeout to prevent hangs)
         case "$target" in
             linux-amd64)
                 print_info "Running binary..."
-                "$output"
+                timeout 10 "$output" || print_warning "Execution failed or timed out"
                 ;;
             linux-arm64)
                 print_info "Running with QEMU..."
-                qemu-aarch64 "$output" 2>/dev/null || print_warning "QEMU execution failed (this is normal in some environments)"
+                timeout 30 qemu-aarch64 "$output" 2>/dev/null || print_warning "QEMU execution failed or timed out"
                 ;;
             linux-armv7)
                 print_info "Running with QEMU..."
-                qemu-arm "$output" 2>/dev/null || print_warning "QEMU execution failed (this is normal in some environments)"
+                timeout 30 qemu-arm "$output" 2>/dev/null || print_warning "QEMU execution failed or timed out"
                 ;;
             linux-riscv64)
                 print_info "Running with QEMU..."
-                qemu-riscv64 "$output" 2>/dev/null || print_warning "QEMU execution failed (this is normal in some environments)"
+                timeout 30 qemu-riscv64 "$output" 2>/dev/null || print_warning "QEMU execution failed or timed out"
                 ;;
             wasi)
                 print_info "Running with wasmtime..."
-                wasmtime "$output" 2>/dev/null || print_warning "Wasmtime execution failed"
+                timeout 30 wasmtime "$output" 2>/dev/null || print_warning "Wasmtime execution failed or timed out"
                 ;;
             *)
                 print_info "Binary created but cannot be executed on this host"
                 ;;
         esac
     else
-        print_error "Compilation failed!"
+        local exit_code=$?
+        if [ $exit_code -eq 124 ]; then
+            print_error "Compilation timed out after 60 seconds!"
+            print_info "The cross-compiler may be hanging. Try running the wrapper directly."
+        else
+            print_error "Compilation failed!"
+        fi
         rm -rf "$test_dir"
         return 1
     fi
