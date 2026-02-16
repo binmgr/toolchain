@@ -302,28 +302,40 @@ RUN set -ex && \
         tar xjf "aarch64--musl--stable-${BOOTLIN_VERSION}.tar.bz2" && \
         mv "aarch64--musl--stable-${BOOTLIN_VERSION}" aarch64-linux-musl && \
         cd aarch64-linux-musl/bin && \
-        for tool in gcc g++ ar strip ranlib; do \
+        for tool in gcc g++; do \
             rm -f aarch64-linux-$tool && \
             printf '#!/bin/sh\nexec /opt/aarch64-linux-musl/bin/aarch64-buildroot-linux-musl-'$tool'.br_real "$@"\n' > aarch64-linux-$tool && \
             chmod +x aarch64-linux-$tool; \
+        done && \
+        for tool in ar strip ranlib; do \
+            rm -f aarch64-linux-$tool && \
+            ln -s aarch64-buildroot-linux-musl-$tool aarch64-linux-$tool; \
         done && \
         cd ../.. && \
         tar xjf "armv7-eabihf--musl--stable-${BOOTLIN_VERSION}.tar.bz2" && \
         mv "armv7-eabihf--musl--stable-${BOOTLIN_VERSION}" armv7-linux-musl && \
         cd armv7-linux-musl/bin && \
-        for tool in gcc g++ ar strip ranlib; do \
+        for tool in gcc g++; do \
             rm -f armv7-linux-$tool && \
             printf '#!/bin/sh\nexec /opt/armv7-linux-musl/bin/arm-buildroot-linux-musleabihf-'$tool'.br_real "$@"\n' > armv7-linux-$tool && \
             chmod +x armv7-linux-$tool; \
+        done && \
+        for tool in ar strip ranlib; do \
+            rm -f armv7-linux-$tool && \
+            ln -s arm-buildroot-linux-musleabihf-$tool armv7-linux-$tool; \
         done && \
         cd ../.. && \
         tar xjf "riscv64-lp64d--musl--stable-${BOOTLIN_VERSION}.tar.bz2" && \
         mv "riscv64-lp64d--musl--stable-${BOOTLIN_VERSION}" riscv64-linux-musl && \
         cd riscv64-linux-musl/bin && \
-        for tool in gcc g++ ar strip ranlib; do \
+        for tool in gcc g++; do \
             rm -f riscv64-linux-$tool && \
             printf '#!/bin/sh\nexec /opt/riscv64-linux-musl/bin/riscv64-buildroot-linux-musl-'$tool'.br_real "$@"\n' > riscv64-linux-$tool && \
             chmod +x riscv64-linux-$tool; \
+        done && \
+        for tool in ar strip ranlib; do \
+            rm -f riscv64-linux-$tool && \
+            ln -s riscv64-buildroot-linux-musl-$tool riscv64-linux-$tool; \
         done && \
         cd ../..; \
     fi && \
