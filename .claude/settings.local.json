@@ -15,7 +15,9 @@
       "WebFetch(domain:android.googlesource.com)",
       "Bash(gh release view:*)",
       "Bash(xargs:*)",
-      "WebFetch(domain:api.github.com)"
+      "WebFetch(domain:api.github.com)",
+      "Bash(file:*)",
+      "Bash(DOCKER_BUILDKIT=0 docker build:*)"
     ]
   }
 }
